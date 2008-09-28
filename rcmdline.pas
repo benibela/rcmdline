@@ -92,15 +92,15 @@ type
     //                                             if C:\Eigene does not exist
     procedure declareFile(const name,description:string;default:string='');overload;
 
-    //DeclareXXXX allows the use of string, int, float, ...
-    //Example:
-    //   declareFlag('property');
-    //  Following command-line options are  possible
-    //    --file 123                  =>     file:=123
-    //    --file '123'                =>     file:=123
-    //    --file "123"                =>     file:=123
-    //    --file='123'                =>     file:=123
-    //    --file="123"                =>     file:=123
+    //**DeclareXXXX allows the use of string, int, float, ...
+    //**Example:
+    //**   declareFlag('property');
+    //**  Following command-line options are  possible
+    //**    --file 123                  =>     file:=123
+    //**    --file '123'                =>     file:=123
+    //**    --file "123"                =>     file:=123
+    //**    --file='123'                =>     file:=123
+    //**    --file="123"                =>     file:=123
 
     procedure declareString(const name,description:string;value: string='');overload;
     procedure declareInt(const name,description:string;value: longint=0);overload;
@@ -111,6 +111,7 @@ type
     function readFloat(const name:string):extended; overload;
     function readFlag(const name:string):boolean;overload;
 
+    //**has this property been read
     function existsProperty(const name:string):boolean;
 
     function readNamelessFiles():TStringArray;
