@@ -122,11 +122,9 @@ type
   end;
 
 implementation
-uses Dialogs //for messages
 {$ifdef unitcheck_rcmdline}
-     ,classes
+     uses classes;
 {$endif}
-     ;
 
 constructor TCommandLineReader.create;
 begin
@@ -195,9 +193,9 @@ var cmd: pchar;
     if automaticalShowError then
       if system.IsConsole then
         writeln(errorMessage)
-       else
-        ShowMessage(errorMessage);
-
+       {else
+        ShowMessage(errorMessage);}
+    ;
     raise ECommandLineParseException.create('Error before '+string(cmd));
   end;
 
@@ -359,7 +357,8 @@ begin
 end;
 procedure TCommandLineReader.declareFlag(const name,description:string;default:boolean=false);
 begin
-  declareFlag(name,description,#0,default);
+  if default<>false then declareFlag(name,description+' (default: true)',#0,default)
+  else declareFlag(name,description,#0,default);
 end;
 
 procedure TCommandLineReader.declareFile(const name,description:string;default:string='');
@@ -373,7 +372,8 @@ begin
 end;
 procedure TCommandLineReader.declareInt(const name,description:string;value: longint=0);
 begin
-  declareProperty(name,description,IntToStr(value),kpInt)^.intvalue:=value;
+  if value<>0 then declareProperty(name,description+' (default: '+IntToStr(value)+')',IntToStr(value),kpInt)^.intvalue:=value
+  else declareProperty(name,description,IntToStr(value),kpInt)^.intvalue:=value;
 end;
 procedure TCommandLineReader.declareFloat(const name,description:string;value: extended=0);
 begin
@@ -471,7 +471,7 @@ var cmdLineReader: TCommandLineReader;
   procedure say(s: string);
   begin
     if IsConsole then writeln(s)
-    else ShowMessage(s);
+    //else ShowMessage(s);
   end;
 begin
   DecimalSeparator:='.';
