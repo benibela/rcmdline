@@ -61,7 +61,7 @@ type
     constructor create;
     destructor destroy;override;
 
-    function avaibleOptions:string;
+    function availableOptions:string;
 
     procedure parse();overload;
     procedure parse(const s:string);overload;
@@ -147,7 +147,7 @@ begin
   inherited;
 end;
 
-function TCommandLineReader.avaibleOptions: string;
+function TCommandLineReader.availableOptions: string;
 var i:integer;
 begin
   result:='';
@@ -164,8 +164,10 @@ end;
 
 procedure TCommandLineReader.parse();
 var params: string;
+  i: Integer;
 begin
   params:=string(cmdline);//string(getcommandline);
+
   if params='' then exit;
   if params[1]='"' then begin
     params[1]:='X';
@@ -185,7 +187,7 @@ var cmd: pchar;
       if length(propertyArray)=0 then
         errorMessage:='you are not allowed to use command line options starting with -'
        else
-        errorMessage:='The following command line options are valid: '#13#10+avaibleOptions;
+        errorMessage:='The following command line options are valid: '#13#10+availableOptions;
     end;
 
     if assigned(onShowError) then
@@ -592,4 +594,4 @@ begin
   say('rcmdline unit test completed');
 {$endif}
 end.
-
+
