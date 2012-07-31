@@ -34,6 +34,7 @@ type
   ECommandLineParseException=class(Exception);
   TKindOfProperty=(kpStr,kpFile,kpInt,kpFloat,kpFlag);
   TProperty=record
+   category: string;
    name,desc,strvalue:string;
    found: boolean;
    case kind: TKindOfProperty of
@@ -52,6 +53,7 @@ type
     parsed{,searchNameLessFile,searchNameLessInt,searchNameLessFloat,searchNameLessFlag}: boolean;
     propertyArray: array of TProperty;
     nameless: TStringArray;
+    currentDeclarationCategory: String;
     function findProperty(name:string):PProperty;
     function declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
   public
@@ -68,6 +70,8 @@ type
     procedure parse();overload;
     procedure parse(const s:string);overload;
     procedure parse(const args:array of string);overload;
+
+    procedure beginDeclarationCategory(category: string);
 
     //DeclareFlag allows the use of flags
     //Example:
@@ -168,10 +172,12 @@ var i:integer;
   names: array of string;
   multiline : boolean;
   maxLen: Integer;
+  category: String;
 begin
   setlength(names, length(propertyArray));
   maxLen := 0;
   multiline:=false;
+  category := '';
   for i:=0 to high(propertyArray) do begin
     cur:='--'+propertyArray[i].name;
     case propertyArray[i].kind of
@@ -193,7 +199,12 @@ begin
 
   result:='';
   for i:=0 to high(propertyArray) do begin
+    if propertyArray[i].category <> category then begin
+      category := propertyArray[i].category;
+      result += LineEnding + LineEnding + category + LineEnding+LineEnding;
+    end;
     cur:=names[i];
+    if category <> '' then cur := '  ' + cur;
     if not multiline or ( pos(LineEnding, propertyArray[i].desc) = 0 ) then cur := cur + mydup(maxLen - length(cur)) + #9 + propertyArray[i].desc + LineEnding
     else begin
       cur := cur + mydup(maxLen - length(cur));
@@ -201,6 +212,7 @@ begin
       p := pos(LineEnding, temp);
       while p > 0 do begin
         cur := cur + #9 + copy(temp, 1, p - 1) + LineEnding + dupped;
+        if category <>' ' then cur := cur + '  ';
         delete(temp, 1, p + length(LineEnding) - 1);
         p := pos(LineEnding, temp);
       end;
@@ -275,9 +287,9 @@ var a: string;
     if assigned(onShowError) or automaticalShowError then begin
       errorMessage:='Error '+message+' (when reading argument: '+a+')'+LineEnding;
       if length(propertyArray)=0 then
-        errorMessage+=LineEnding+LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
+        errorMessage+=LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
        else
-        errorMessage+=LineEnding+LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
+        errorMessage+=LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
     end;
 
     if assigned(onShowError) then
@@ -418,6 +430,11 @@ begin
   parsed:=true;
 end;
 
+procedure TCommandLineReader.beginDeclarationCategory(category: string);
+begin
+  currentDeclarationCategory := category;
+end;
+
 function TCommandLineReader.findProperty(name:string):PProperty;
 var i:integer;
 begin
@@ -434,6 +451,7 @@ function TCommandLineReader.declareProperty(name,description,default:string;kind
 begin
   SetLength(propertyArray,length(propertyArray)+1);
   result:=@propertyArray[high(propertyArray)];
+  result^.category:=currentDeclarationCategory;
   result^.name:=lowercase(name);
   result^.desc:=description;
   result^.strvalue:=default;
