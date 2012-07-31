@@ -151,17 +151,62 @@ begin
 end;
 
 function TCommandLineReader.availableOptions: string;
+
+  function mydup(count: integer): string;
+  var
+    i: Integer;
+  begin
+    result := '';
+    for i := 1 to count do result := result + ' ';
+  end;
+
 var i:integer;
+  cur, temp, dupped: String;
+  j: Integer;
+  p: SizeInt;
+
+  names: array of string;
+  multiline : boolean;
+  maxLen: Integer;
 begin
-  result:='';
+  setlength(names, length(propertyArray));
+  maxLen := 0;
+  multiline:=false;
   for i:=0 to high(propertyArray) do begin
-    result:=result+'--'+propertyArray[i].name;
+    cur:='--'+propertyArray[i].name;
     case propertyArray[i].kind of
       kpFlag: if propertyArray[i].abbreviation<>#0 then
-                result:=result+' or -'+propertyArray[i].abbreviation;
-      else result:=result+'=';
+                cur:=cur+' or -'+propertyArray[i].abbreviation;
+      kpInt: cur := cur + '=<int> ';
+      kpFloat: cur := cur + '=<float> ';
+      kpStr: cur := cur + '=<string> ';
+      kpFile: cur := cur + '=<file> ';
+      else cur:=cur+'=';
     end;
-    result:=result+#9+propertyArray[i].desc+#13#10;
+    names[i] := cur;
+    if length(cur) > maxLen then maxLen := length(cur);
+    multiline:=multiline or (pos(LineEnding, propertyArray[i].desc) > 0);
+  end;
+
+  dupped := '';
+  for j:=1 to maxLen do dupped := dupped + ' ';
+
+  result:='';
+  for i:=0 to high(propertyArray) do begin
+    cur:=names[i];
+    if not multiline or ( pos(LineEnding, propertyArray[i].desc) = 0 ) then cur := cur + mydup(maxLen - length(cur)) + #9 + propertyArray[i].desc + LineEnding
+    else begin
+      cur := cur + mydup(maxLen - length(cur));
+      temp := propertyArray[i].desc;
+      p := pos(LineEnding, temp);
+      while p > 0 do begin
+        cur := cur + #9 + copy(temp, 1, p - 1) + LineEnding + dupped;
+        delete(temp, 1, p + length(LineEnding) - 1);
+        p := pos(LineEnding, temp);
+      end;
+      cur := cur + #9 + temp + LineEnding;
+    end;
+    result:=result+cur;
   end;
 end;
 
@@ -223,27 +268,30 @@ end;
 procedure TCommandLineReader.parse(const args: array of string);
 var a: string;
 
-  procedure raiseError;
+  procedure raiseError(message: string);
   var errorMessage: string;
       i:integer;
   begin
     if assigned(onShowError) or automaticalShowError then begin
-      errorMessage:='Parse error at this position: '+a+#13#10;
+      errorMessage:='Error '+message+' (when reading argument: '+a+')'+LineEnding;
       if length(propertyArray)=0 then
-        errorMessage:='you are not allowed to use command line options starting with -'
+        errorMessage+=LineEnding+LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
        else
-        errorMessage:='The following command line options are valid: '#13#10+availableOptions;
+        errorMessage+=LineEnding+LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
     end;
 
     if assigned(onShowError) then
       onShowError(errorMessage);
-    if automaticalShowError then
-      if system.IsConsole then
-        writeln(errorMessage)
+    if automaticalShowError then begin
+      if system.IsConsole then begin
+        writeln(errorMessage);
+        halt;
+      end;
        {else
-        ShowMessage(errorMessage);}
+        ShowMessage(errorMessage);} //don't want to link against showMessage in console applications.
     ;
-    raise ECommandLineParseException.create('Error when parsing '+a);
+    end;
+    raise ECommandLineParseException.create('Error '+message+' when reading argument: '+a);
   end;
 
 
@@ -289,7 +337,7 @@ begin
               currentProperty:=i;
               break;
             end;
-          if currentProperty = -1 then raiseError;
+          if currentProperty = -1 then raiseError('Unknown option: '+a);
         end else begin
           //flag switch or value setting
           //i.e --flag or --name=value or --name value
@@ -305,11 +353,11 @@ begin
               propertyArray[i].found:=true;
               break;
             end;
-          if currentProperty=-1 then raiseError;
+          if currentProperty=-1 then raiseError('Unknown option: '+name);
           if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then continue;
 
           if index = 0 then begin
-            if (argpos = length(args)) then raiseError;
+            if (argpos = length(args)) then raiseError('No value for option '+name+' given');
             value := args[argpos];
             argpos += 1;
           end else value := copy(a, index + 1, length(a) - index);
@@ -332,11 +380,11 @@ begin
               end;
               kpFlag: begin
                 propertyArray[currentProperty].flagvalue:=SameText(value, 'true');
-                if not propertyArray[currentProperty].flagvalue and not SameText(value, 'false') then raiseError;
+                if not propertyArray[currentProperty].flagvalue and not SameText(value, 'false') then raiseError('Only "true" and "false" are valid flag values');
               end;
             end;
           except
-            raiseError();
+            raiseError('Invalid value: '+value+' for option '+name);
           end;
         end;
       end else begin
@@ -349,7 +397,7 @@ begin
               propertyArray[i].found:=true;
               currentProperty:=i;
             end;
-          if currentProperty = -1 then raiseError;
+          if currentProperty = -1 then raiseError('Unknown abbreviation: '+a[j]+ LineEnding +'(use -- or / for arguments)');
         end;
       end;
     end else begin
