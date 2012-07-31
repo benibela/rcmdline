@@ -30,7 +30,7 @@ type
   TFloatArray=array of extended;
   TBooleanArray=array of boolean;
   TCommandLineReaderLanguage=(clrlEnglish,clrlGerman);
-  TCommandLineReaderShowError=procedure (errorDescription: string);
+  TCommandLineReaderShowError=procedure (errorDescription: string) of object;
   ECommandLineParseException=class(Exception);
   TKindOfProperty=(kpStr,kpFile,kpInt,kpFloat,kpFlag);
   TProperty=record
@@ -69,7 +69,7 @@ type
 
     procedure parse();overload;
     procedure parse(const s:string);overload;
-    procedure parse(const args:array of string);overload;
+    procedure parse(const args:TStringArray);overload;
 
     procedure beginDeclarationCategory(category: string);
 
@@ -130,7 +130,22 @@ type
 
 implementation
 {$ifdef unitcheck_rcmdline}
-     uses classes;
+uses classes;
+{$endif}
+
+
+{$ifdef fpc}
+function equalCaseInseq(const a, b: string): boolean;
+begin
+  result := SameText(a,b);
+end;
+{$else}
+function equalCaseInseq(const a, b: string): boolean;
+begin
+  result := (length(a) = length(b)) and (strLiComp(pchar(a), pchar(b), length(a)) = 0);
+end;
+
+const LineEnding = #13#10;
 {$endif}
 
 constructor TCommandLineReader.create;
@@ -167,7 +182,7 @@ function TCommandLineReader.availableOptions: string;
 var i:integer;
   cur, temp, dupped: String;
   j: Integer;
-  p: SizeInt;
+  p: integer;
 
   names: array of string;
   multiline : boolean;
@@ -223,7 +238,7 @@ begin
 end;
 
 procedure TCommandLineReader.parse();
-var args: array of string;
+var args: TStringArray;
   i: Integer;
 begin
   if Paramcount = 0 then exit;
@@ -236,7 +251,7 @@ begin
 end;
 
 procedure TCommandLineReader.parse(const s:string);
-var args: array of string;
+var args: TStringArray;
   i: Integer;
   cmd: pchar;
   marker: pchar;
@@ -277,7 +292,7 @@ begin
   parse(args);
 end;
 
-procedure TCommandLineReader.parse(const args: array of string);
+procedure TCommandLineReader.parse(const args: TStringArray);
 var a: string;
 
   procedure raiseError(message: string);
@@ -313,8 +328,8 @@ var currentProperty:longint;
     flagValue: boolean;
     stringStart: char;
     i:integer;
-    index: SizeInt;
-    name: String;
+    index: integer;
+    name: String;                          
     value: String;
     argpos: Integer;
     j: Integer;
@@ -343,7 +358,7 @@ begin
           if flagValue then delete(a, 1, 7) else delete(a, 1, 8);
 
           for i:=0 to high(propertyArray) do
-            if (propertyArray[i].kind=kpFlag) and SameText(propertyArray[i].name, a) then begin
+            if (propertyArray[i].kind=kpFlag) and equalCaseInseq(propertyArray[i].name, a) then begin
               propertyArray[i].flagvalue:=flagValue;
               propertyArray[i].found:=true;
               currentProperty:=i;
@@ -358,7 +373,7 @@ begin
           if index > 0 then name := copy(a, 1, index - 1);
 
           for i:=0 to high(propertyArray) do
-            if SameText(propertyArray[i].name, name) then begin
+            if equalCaseInseq(propertyArray[i].name, name) then begin
               if (propertyArray[i].kind=kpFlag) and (index = 0) then
                 propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
               currentProperty:=i;
@@ -391,8 +406,8 @@ begin
                 end;
               end;
               kpFlag: begin
-                propertyArray[currentProperty].flagvalue:=SameText(value, 'true');
-                if not propertyArray[currentProperty].flagvalue and not SameText(value, 'false') then raiseError('Only "true" and "false" are valid flag values');
+                propertyArray[currentProperty].flagvalue:=equalCaseInseq(value, 'true');
+                if not propertyArray[currentProperty].flagvalue and not equalCaseInseq(value, 'false') then raiseError('Only "true" and "false" are valid flag values');
               end;
             end;
           except
