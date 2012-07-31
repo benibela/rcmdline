@@ -201,7 +201,7 @@ begin
   for i:=0 to high(propertyArray) do begin
     if propertyArray[i].category <> category then begin
       category := propertyArray[i].category;
-      result += LineEnding + LineEnding + category + LineEnding+LineEnding;
+      result := result + LineEnding + LineEnding + category + LineEnding+LineEnding;
     end;
     cur:=names[i];
     if category <> '' then cur := '  ' + cur;
@@ -287,9 +287,9 @@ var a: string;
     if assigned(onShowError) or automaticalShowError then begin
       errorMessage:='Error '+message+' (when reading argument: '+a+')'+LineEnding;
       if length(propertyArray)=0 then
-        errorMessage+=LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
+        errorMessage:=errorMessage+LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
        else
-        errorMessage+=LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
+        errorMessage:=errorMessage+ LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
     end;
 
     if assigned(onShowError) then
@@ -327,7 +327,7 @@ begin
   argpos := 0;
   while argpos < length(args) do begin
     a := args[argpos];
-    argpos += 1;
+    inc(argpos);
     if a = '' then continue;
     if (a[1] = '-') or (allowDOSStyle and (a[1]='/')) then begin
       //Start of property name
@@ -371,7 +371,7 @@ begin
           if index = 0 then begin
             if (argpos = length(args)) then raiseError('No value for option '+name+' given');
             value := args[argpos];
-            argpos += 1;
+            inc(argpos);
           end else value := copy(a, index + 1, length(a) - index);
 
           propertyArray[currentProperty].strvalue := value;
@@ -382,7 +382,7 @@ begin
               kpFile: begin
                 for i := 0 to length(args) - argpos do begin
                   if FileExists(value) then begin
-                    argpos += i;
+                    inc(argpos, i);
                     propertyArray[currentProperty].strvalue := value;
                     break;
                   end;
