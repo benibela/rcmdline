@@ -21,6 +21,8 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
+//{$define unitcheck_rcmdline}
+
 uses sysutils; //for exceptions
 type
   TStringArray=array of string;
@@ -65,6 +67,7 @@ type
 
     procedure parse();overload;
     procedure parse(const s:string);overload;
+    procedure parse(const args:array of string);overload;
 
     //DeclareFlag allows the use of flags
     //Example:
@@ -163,27 +166,69 @@ begin
 end;
 
 procedure TCommandLineReader.parse();
-var params: string;
+var args: array of string;
   i: Integer;
 begin
-  params:=string(cmdline);//string(getcommandline);
+  if Paramcount = 0 then exit;
 
-  if params='' then exit;
-  if params[1]='"' then begin
-    params[1]:='X';
-    delete(params,1,pos('"',params));
-  end else delete(params,1,pos(' ',params));                            
-  parse(params);
+  //parse(string(getcommandline));
+
+  setlength(args, Paramcount);
+  for i:=0 to high(args) do args[i] := paramstr(i+1);
+  parse(args);
 end;
+
 procedure TCommandLineReader.parse(const s:string);
-var cmd: pchar;
+var args: array of string;
+  i: Integer;
+  cmd: pchar;
+  marker: pchar;
+  stringstart: Char;
+
+  procedure pushMarked;
+  var
+    addLen: longint;
+  begin
+    if (marker = @s[1]) or (marker = cmd) or ((marker-1)^ = ' ') or (length(args) = 0) then
+      setlength(args, length(args)+1);
+    addLen := cmd - marker;
+    if addLen <= 0 then exit;
+    setlength(args[high(args)], length(args[high(args)]) + addLen);
+    move(marker^, args[high(args)][ length(args[high(args)]) - addLen + 1 ], addLen);
+    marker := cmd;
+  end;
+begin
+  if s = '' then exit;
+  cmd := @s[1];
+  marker := cmd;
+  while true do begin
+    if (cmd^ in [' ', #0]) then begin
+      if marker^ <> ' ' then pushMarked;
+      if cmd^ = #0 then break;
+    end else if cmd^ in ['"', ''''] then begin //todo escaped quotes (e.g. a"\"\""b)
+      if marker^ = ' ' then marker := cmd;
+      pushMarked;
+      stringstart := cmd^;
+      inc(cmd);
+      marker:=cmd;
+      while (cmd^ <> stringstart) and (cmd^ <> #0) do inc(cmd);
+      pushMarked;
+      marker := cmd + 1;
+    end else if marker^ = ' ' then marker:=cmd;
+    inc(cmd);
+  end;
+  parse(args);
+end;
+
+procedure TCommandLineReader.parse(const args: array of string);
+var a: string;
 
   procedure raiseError;
   var errorMessage: string;
       i:integer;
   begin
     if assigned(onShowError) or automaticalShowError then begin
-      errorMessage:='Parse error at this position: '+copy(string(cmd),1,100)+#13#10;
+      errorMessage:='Parse error at this position: '+a+#13#10;
       if length(propertyArray)=0 then
         errorMessage:='you are not allowed to use command line options starting with -'
        else
@@ -198,7 +243,7 @@ var cmd: pchar;
        {else
         ShowMessage(errorMessage);}
     ;
-    raise ECommandLineParseException.create('Error before '+string(cmd));
+    raise ECommandLineParseException.create('Error when parsing '+a);
   end;
 
 
@@ -208,123 +253,120 @@ var currentProperty:longint;
     flagValue: boolean;
     stringStart: char;
     i:integer;
+    index: SizeInt;
+    name: String;
+    value: String;
+    argpos: Integer;
+    j: Integer;
 begin
-  cmd:=pchar(s);
   currentProperty:=-1;
   SetLength(nameless,0);
   for i:=0 to high(propertyArray) do
     propertyArray[i].found:=false;
-  while cmd^<>#0 do begin
-    if (cmd^='-') or (allowDOSStyle and (cmd^='/')) then begin
+
+  argpos := 0;
+  while argpos < length(args) do begin
+    a := args[argpos];
+    argpos += 1;
+    if a = '' then continue;
+    if (a[1] = '-') or (allowDOSStyle and (a[1]='/')) then begin
       //Start of property name
-      if (cmd^='/') or ((cmd+1)^='-') then begin //long property
-        if cmd^<>'/' then inc(cmd);
-        inc(cmd);
-        valueStart:=cmd;
-        while not (cmd^  in [' ',#0,'=']) do
-          inc(cmd);
+      if (a[1]='/') or ((length(a) > 1) and (a[2]='-')) then begin //long property
+        if a[1]<>'/' then delete(a, 1, 2) else delete(a, 1, 1);
+        if a = '' then continue;
+
         currentProperty:=-1;
-        if (StrLIComp(valueStart,'enable-',7) = 0)or
-           (StrLIComp(valueStart,'disable-',8) = 0)  then begin
-          flagValue:=valueStart^='e';
-          if flagValue then inc(valueStart,7)
-          else inc(valueStart,8);
-          {while not (cmd^ in ['-',#0,'=']) do
-            inc(cmd);}
-          valueLength:=longint(cmd-valueStart);
+        if (StrLIComp(@a[1],'enable-',7) = 0)or
+           (StrLIComp(@a[1],'disable-',8) = 0)  then begin
+          //long flag
+          flagValue:=a[1]='e';
+          if flagValue then delete(a, 1, 7) else delete(a, 1, 8);
+
           for i:=0 to high(propertyArray) do
-            if (length(propertyArray[i].name)=valueLength) and
-               (StrLIComp(valueStart,@propertyArray[i].name[1],valueLength)=0) and
-               (propertyArray[i].kind=kpFlag) then begin
+            if (propertyArray[i].kind=kpFlag) and SameText(propertyArray[i].name, a) then begin
               propertyArray[i].flagvalue:=flagValue;
               propertyArray[i].found:=true;
+              currentProperty:=i;
               break;
             end;
+          if currentProperty = -1 then raiseError;
         end else begin
-          valueLength:=longint(cmd-valueStart);
+          //flag switch or value setting
+          //i.e --flag or --name=value or --name value
+          name := a;
+          index := pos('=', a);
+          if index > 0 then name := copy(a, 1, index - 1);
+
           for i:=0 to high(propertyArray) do
-            if (length(propertyArray[i].name)=valueLength) and
-               (StrLIComp(valueStart,@propertyArray[i].name[1],valueLength)=0) then begin
-              if propertyArray[i].kind=kpFlag then
+            if SameText(propertyArray[i].name, name) then begin
+              if (propertyArray[i].kind=kpFlag) and (index = 0) then
                 propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
               currentProperty:=i;
               propertyArray[i].found:=true;
               break;
             end;
           if currentProperty=-1 then raiseError;
-          if propertyArray[currentProperty].kind=kpFlag then
-            currentProperty:=-1;
-        end;
-      end else if (cmd+1)^ in [' ',#0] then raiseError //unknown format
-      else begin //flag abbreviation string
-        inc(cmd);
-        while not (cmd^ in [' ',#0]) do begin
-          for i:=0 to high(propertyArray) do
-            if (propertyArray[i].kind=kpFlag) and (propertyArray[i].abbreviation=cmd^) then begin
-              propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
-              propertyArray[i].found:=true;
-            end;
-          inc(cmd);
-        end;
-      end;
-    end else if cmd^ <> ' ' then begin
-      //Start of property value
-      if cmd^ in ['"',''''] then begin
-        stringStart:=cmd^;
-        inc(cmd);
-        valueStart:=cmd;
-        while not (cmd^ in [stringStart,#0]) do
-          inc(cmd);
-        valueLength:=longint(cmd-valueStart);
-        if currentProperty<>-1 then begin
-          setlength(propertyArray[currentProperty].strvalue,valueLength);
-          move(valueStart^,propertyArray[currentProperty].strvalue[1],valueLength);
-          case propertyArray[currentProperty].kind of
-            kpInt: propertyArray[currentProperty].intvalue:=StrToInt(propertyArray[currentProperty].strvalue);
-            kpFloat:  propertyArray[currentProperty].floatvalue:=StrToFloat(propertyArray[currentProperty].strvalue);
-          end;
-        end else begin
-          SetLength(nameless,length(nameless)+1);
-          setlength(nameless[high(nameless)],valueLength);
-          move(valueStart^,nameless[high(nameless)][1],valueLength);
-        end;
-      end else begin
-        valueStart:=cmd;
-        while not (cmd^ in [' ',#0]) do inc(cmd);
-        valueLength:=longint(cmd-valueStart);
-        if currentProperty=-1 then begin
-          SetLength(nameless,length(nameless)+1);
-          setlength(nameless[high(nameless)],valueLength);
-          move(valueStart^,nameless[high(nameless)][1],valueLength);
-        end else begin
-          setlength(propertyArray[currentProperty].strvalue,valueLength);
-          move(valueStart^,propertyArray[currentProperty].strvalue[1],valueLength);
+          if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then continue;
+
+          if index = 0 then begin
+            if (argpos = length(args)) then raiseError;
+            value := args[argpos];
+            argpos += 1;
+          end else value := copy(a, index + 1, length(a) - index);
+
+          propertyArray[currentProperty].strvalue := value;
           try
             case propertyArray[currentProperty].kind of
-              kpInt: propertyArray[currentProperty].intvalue:=StrToInt(propertyArray[currentProperty].strvalue);
-              kpFloat:  propertyArray[currentProperty].floatvalue:=StrToFloat(propertyArray[currentProperty].strvalue);
-              kpFile: with propertyArray[currentProperty] do begin
-                while not FileExists(strvalue) do begin
-                  while cmd^ = ' ' do inc(cmd);
-                  while not (cmd^ in [' ',#0]) do inc(cmd);
-                  valueLength:=longint(cmd-valueStart);
-                  setlength(strvalue,valueLength);
-                  move(valueStart^,strvalue[1],valueLength);
-                  if cmd^ = #0 then exit;
+              kpInt: propertyArray[currentProperty].intvalue:=StrToInt(value);
+              kpFloat:  propertyArray[currentProperty].floatvalue:=StrToFloat(value);
+              kpFile: begin
+                for i := 0 to length(args) - argpos do begin
+                  if FileExists(value) then begin
+                    argpos += i;
+                    propertyArray[currentProperty].strvalue := value;
+                    break;
+                  end;
+                  if i = length(args) - argpos then break; //not found
+                  value := value + ' ' + args[argpos + i];
                 end;
+              end;
+              kpFlag: begin
+                propertyArray[currentProperty].flagvalue:=SameText(value, 'true');
+                if not propertyArray[currentProperty].flagvalue and not SameText(value, 'false') then raiseError;
               end;
             end;
           except
             raiseError();
           end;
         end;
+      end else begin
+        //flag abbreviation string
+        for j:=2 to length(a) do begin //2 to skip beginning -
+          currentProperty:=-1;
+          for i:=0 to high(propertyArray) do
+            if (propertyArray[i].kind=kpFlag) and (propertyArray[i].abbreviation=a[j]) then begin
+              propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
+              propertyArray[i].found:=true;
+              currentProperty:=i;
+            end;
+          if currentProperty = -1 then raiseError;
+        end;
       end;
-      currentProperty:=-1;
+    end else begin
+      //value without variable name
+      SetLength(nameless,length(nameless)+1);
+      nameless[high(nameless)] := a;
     end;
-    if cmd^<>#0 then inc(cmd)
-    else break;
-
   end;
+
+  {debug things: for i:= 0 to high(propertyArray) do
+  if propertyArray[i].found then begin
+    write(propertyArray[i].name , ' => ', propertyArray[i].strvalue);
+    if propertyArray[i].kind =kpFlag then writeln( '(',propertyArray[i].flagvalue,')')
+    else writeln;
+  end;
+  for i:= 0 to high(nameless) do writeln('no: ', nameless[i]);}
+
   parsed:=true;
 end;
 
