@@ -252,7 +252,6 @@ end;
 
 procedure TCommandLineReader.parse(const s:string);
 var args: TStringArray;
-  i: Integer;
   cmd: pchar;
   marker: pchar;
   stringstart: Char;
@@ -297,7 +296,6 @@ var a: string;
 
   procedure raiseError(message: string);
   var errorMessage: string;
-      i:integer;
   begin
     if assigned(onShowError) or automaticalShowError then begin
       errorMessage:='Error '+message+' (when reading argument: '+a+')'+LineEnding;
@@ -323,10 +321,7 @@ var a: string;
 
 
 var currentProperty:longint;
-    valueStart: pchar;
-    valueLength: longint;
     flagValue: boolean;
-    stringStart: char;
     i:integer;
     index: integer;
     name: String;                          
@@ -334,7 +329,6 @@ var currentProperty:longint;
     argpos: Integer;
     j: Integer;
 begin
-  currentProperty:=-1;
   SetLength(nameless,0);
   for i:=0 to high(propertyArray) do
     propertyArray[i].found:=false;
