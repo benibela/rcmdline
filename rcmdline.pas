@@ -14,7 +14,11 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 }
+(*** @abstract(
+  Command line reader
+)*)
 unit rcmdline;
+
 
 interface
 {$IFDEF FPC}
@@ -48,6 +52,23 @@ type
 
   { TCommandLineReader }
 
+  (*** @abstract(
+    A command line reader class that checks for valid arguments and automatically prints a formatted help.
+    )
+                                                                                                           @br
+                                                                                                           @br
+    Usage: @orderedList(
+      @item(  Declare all allowed arguments with the corresponding DeclareXXXX functions )
+      @item(  (optional) Call parse to explicitely read the actual command line )
+      @item(  Use readXXX to read a declared argument )
+    )
+
+    On the command line arguments can be given in different ways, e.g.
+      @code(--name=value), @code(/name=value), @code(--name value), @code(/name value)                     @br
+    Declared flags can be changed with @code(--enable-flag) or @code(--disable-flag) or @code(--flag) where
+    latter option negates the default value.@br
+    File are checked for spaces, so it is not always necessary to include them in quotes.
+  *)
   TCommandLineReader=class
   protected
     parsed{,searchNameLessFile,searchNameLessInt,searchNameLessFloat,searchNameLessFlag}: boolean;
@@ -65,66 +86,80 @@ type
     constructor create;
     destructor destroy;override;
 
+    //** Returns the option summary printed by unknown errors
     function availableOptions:string;
 
+    //** Reads the standard command line parameters
     procedure parse();overload;
+    //** Reads the command line parameters from the string s
     procedure parse(const s:string);overload;
+    //** Reads the command line parameters from the array args
     procedure parse(const args:TStringArray);overload;
 
+    //** Adds a new option category. The category is just printed in the --help output
     procedure beginDeclarationCategory(category: string);
 
-    //DeclareFlag allows the use of flags
-    //Example:
-    //   declareFlag('flag','f',true);
-    //  Following command-line options are always possible
-    //    --enable-flag      =>     flag:=true
-    //    --disable-flag     =>     flag:=false
-    //    --flag             =>     flag:=not default
-    //    -xfy               =>     flag:=not default
+    //**DeclareFlag allows the use of flags                     @br
+    //**Example:                                                @br
+    //**  @code(declareFlag('flag','f',true);)                  @br
+    //**  Following command-line options are always possible    @br
+    //**    --enable-flag      =>     flag:=true                @br
+    //**    --disable-flag     =>     flag:=false               @br
+    //**    --flag             =>     flag:=not default         @br
+    //**    -xfy               =>     flag:=not default
     procedure declareFlag(const name,description:string;flagNameAbbreviation:char;default:boolean=false);overload;
     procedure declareFlag(const name,description:string;default:boolean=false);overload;
 
 
-    //DeclareFlag allows the use of a file name
-    //Example:
-    //   declareFile('file');
-    //  Following command-line options are  possible
-    //    --file C:\test                  =>     file:=C:\test
-    //    --file 'C:\test'                =>     file:=C:\test
-    //    --file "C:\test"                =>     file:=C:\test
-    //    --file='C:\test'                =>     file:=C:\test
-    //    --file="C:\test"                =>     file:=C:\test
-    //    --file C:\Eigene Dateien\a.bmp  =>     file:=C:\Eigene
-    //                                           or file:=C:\Eigene Dateien\a.bmp,
-    //                                             if C:\Eigene does not exist
+    //**DeclareFile allows the use of a file name                                     @br
+    //**Example:                                                                      @br
+    //**  @code(declareFile('file');)                                                 @br
+    //**  Following command-line options are  possible                                @br
+    //**    --file C:\test                  =>     file:=C:\test                      @br
+    //**    --file 'C:\test'                =>     file:=C:\test                      @br
+    //**    --file "C:\test"                =>     file:=C:\test                      @br
+    //**    --file='C:\test'                =>     file:=C:\test                      @br
+    //**    --file="C:\test"                =>     file:=C:\test                      @br
+    //**    --file C:\Eigene Dateien\a.bmp  =>     file:=C:\Eigene                    @br
+    //**                                           or file:=C:\Eigene Dateien\a.bmp,  @br
+    //**                                             if C:\Eigene does not exist
     procedure declareFile(const name,description:string;default:string='');overload;
 
     //**DeclareXXXX allows the use of string, int, float, ...
-    //**Example:
-    //**   declareFlag('property');
-    //**  Following command-line options are  possible
-    //**    --file 123                  =>     file:=123
-    //**    --file '123'                =>     file:=123
-    //**    --file "123"                =>     file:=123
-    //**    --file='123'                =>     file:=123
-    //**    --file="123"                =>     file:=123
+    //**Example:                                                    @br
+    //**   @code(declareInt('property');)                           @br
+    //**  Following command-line options are  possible              @br
+    //**    --file 123                  =>     file:=123            @br
+    //**    --file '123'                =>     file:=123            @br
+    //**    --file "123"                =>     file:=123            @br
+    //**    --file='123'                =>     file:=123            @br
+    //**    --file="123"                =>     file:=123            @br
 
     procedure declareString(const name,description:string;value: string='');overload;
     procedure declareInt(const name,description:string;value: longint=0);overload;
     procedure declareFloat(const name,description:string;value: extended=0);overload;
 
+    //** Reads a previously declared string property
     function readString(const name:string):string; overload;
+    //** Reads a previously declared int property
     function readInt(const name:string):longint;overload;
+    //** Reads a previously declared float property
     function readFloat(const name:string):extended; overload;
+    //** Reads a previously declared boolean property
     function readFlag(const name:string):boolean;overload;
 
-    //**has this property been read
+    //** Tests if a declared property named name has been read
     function existsProperty(const name:string):boolean;
 
+    //** Reads all file names that are given on the command line and do not belong to an declared option (doesn't check for non existing files, yet)
     function readNamelessFiles():TStringArray;
+    //** Reads all strings that are given on the command line and do not belong to an declared option
     function readNamelessString():TStringArray;
+    //** Reads all integers that are given on the command line and do not belong to an declared option
     function readNamelessInt():TLongintArray;
+    //** Reads all floats that are given on the command line and do not belong to an declared option
     function readNamelessFloat():TFloatArray;
+    //** Reads all booleans (true, false) that are given on the command line and do not belong to an declared option
     function readNamelessFlag():TBooleanArray;
   end;
 
