@@ -77,6 +77,9 @@ type
     currentDeclarationCategory: String;
     function findProperty(name:string):PProperty;
     function declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
+
+    procedure raiseErrorWithHelp(message: string);
+    procedure parseSingleValue(var prop: TProperty);
   public
     language:TCommandLineReaderLanguage; //not implemented yet
     onShowError: TCommandLineReaderShowError;
@@ -90,11 +93,11 @@ type
     function availableOptions:string;
 
     //** Reads the standard command line parameters
-    procedure parse();overload;
+    procedure parse();virtual;overload;
     //** Reads the command line parameters from the string s
-    procedure parse(const s:string);overload;
+    procedure parse(const s:string);virtual;overload;
     //** Reads the command line parameters from the array args
-    procedure parse(const args:TStringArray);overload;
+    procedure parse(const args:TStringArray);virtual;overload;
 
     //** Adds a new option category. The category is just printed in the --help output
     procedure beginDeclarationCategory(category: string);
@@ -330,28 +333,8 @@ procedure TCommandLineReader.parse(const args: TStringArray);
 var a: string;
 
   procedure raiseError(message: string);
-  var errorMessage: string;
   begin
-    if assigned(onShowError) or automaticalShowError then begin
-      errorMessage:='Error '+message+' (when reading argument: '+a+')'+LineEnding;
-      if length(propertyArray)=0 then
-        errorMessage:=errorMessage+LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
-       else
-        errorMessage:=errorMessage+ LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
-    end;
-
-    if assigned(onShowError) then
-      onShowError(errorMessage);
-    if automaticalShowError then begin
-      if system.IsConsole then begin
-        writeln(errorMessage);
-        halt;
-      end;
-       {else
-        ShowMessage(errorMessage);} //don't want to link against showMessage in console applications.
-    ;
-    end;
-    raise ECommandLineParseException.create('Error '+message+' when reading argument: '+a);
+    raiseErrorWithHelp('Error '+message+' (when reading argument: '+a+')');
   end;
 
 
@@ -419,29 +402,17 @@ begin
           end else value := copy(a, index + 1, length(a) - index);
 
           propertyArray[currentProperty].strvalue := value;
-          try
-            case propertyArray[currentProperty].kind of
-              kpInt: propertyArray[currentProperty].intvalue:=StrToInt(value);
-              kpFloat:  propertyArray[currentProperty].floatvalue:=StrToFloat(value);
-              kpFile: begin
-                for i := 0 to length(args) - argpos do begin
-                  if FileExists(value) then begin
-                    inc(argpos, i);
-                    propertyArray[currentProperty].strvalue := value;
-                    break;
-                  end;
-                  if i = length(args) - argpos then break; //not found
-                  value := value + ' ' + args[argpos + i];
-                end;
+          if propertyArray[currentProperty].kind = kpFile then begin
+            for i := 0 to length(args) - argpos do begin
+              if FileExists(value) then begin
+                inc(argpos, i);
+                propertyArray[currentProperty].strvalue := value;
+                break;
               end;
-              kpFlag: begin
-                propertyArray[currentProperty].flagvalue:=equalCaseInseq(value, 'true');
-                if not propertyArray[currentProperty].flagvalue and not equalCaseInseq(value, 'false') then raiseError('Only "true" and "false" are valid flag values');
-              end;
+              if i = length(args) - argpos then break; //not found
+              value := value + ' ' + args[argpos + i];
             end;
-          except
-            raiseError('Invalid value: '+value+' for option '+name);
-          end;
+          end else parseSingleValue(propertyArray[currentProperty]);
         end;
       end else begin
         //flag abbreviation string
@@ -501,6 +472,49 @@ begin
   result^.strvalue:=default;
   result^.kind:=kind;
 end;
+
+procedure TCommandLineReader.raiseErrorWithHelp(message: string);
+var errorMessage: string;
+begin
+  if assigned(onShowError) or automaticalShowError then begin
+    errorMessage:=message+LineEnding;
+    if length(propertyArray)=0 then
+      errorMessage:=errorMessage+LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
+     else
+      errorMessage:=errorMessage+ LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
+  end;
+
+  if assigned(onShowError) then
+    onShowError(errorMessage);
+  if automaticalShowError then begin
+    if system.IsConsole then begin
+      writeln(errorMessage);
+      halt;
+    end;
+     {else
+      ShowMessage(errorMessage);} //don't want to link against showMessage in console applications.
+  ;
+  end;
+  raise ECommandLineParseException.create(message);
+end;
+
+procedure TCommandLineReader.parseSingleValue(var prop: TProperty);
+begin
+  try
+    case prop.kind of
+      kpInt: prop.intvalue:=StrToInt(prop.strvalue);
+      kpFloat:  prop.floatvalue:=StrToFloat(prop.strvalue);
+      kpFlag: begin
+        prop.flagvalue:=equalCaseInseq(prop.strvalue, 'true');
+        if not prop.flagvalue and not equalCaseInseq(prop.strvalue, 'false') then
+          raiseErrorWithHelp('Only "true" and "false" are valid flag values for option '+prop.name);
+      end;
+    end;
+  except
+    raiseErrorWithHelp('Invalid value: '+prop.strvalue+' for option '+prop.name);
+  end;
+end;
+
 procedure TCommandLineReader.declareFlag(const name,description:string;flagNameAbbreviation:char;default:boolean=false);
 begin
   with declareProperty(name,description,'',kpFlag)^ do begin
