@@ -402,6 +402,7 @@ begin
           for i:=0 to high(propertyArray) do
             if (propertyArray[i].kind=kpFlag) and equalCaseInseq(propertyArray[i].name, a) then begin
               propertyArray[i].flagvalue:=flagValue;
+              if propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
               propertyArray[i].found:=true;
               currentProperty:=i;
               break;
@@ -430,6 +431,7 @@ begin
 
           if currentProperty=-1 then raiseError('Unknown option: '+name);
 
+          if propertyArray[currentProperty].found then raiseError('Duplicated option: '+name);
           propertyArray[currentProperty].found:=true;
           if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then begin
             propertyArray[currentProperty].flagvalue:=not propertyArray[currentProperty].flagdefault;
@@ -462,6 +464,7 @@ begin
           for i:=0 to high(propertyArray) do
             if (propertyArray[i].kind=kpFlag) and (propertyArray[i].abbreviation=a[j]) then begin
               propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
+              if propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
               propertyArray[i].found:=true;
               currentProperty:=i;
             end;
@@ -763,7 +766,7 @@ begin
   cmdLineReader.declareFloat('p4','',4);
   cmdLineReader.declareFloat('p5','',5);
   cmdLineReader.declareFloat('p6','',6);
-  cmdLineReader.parse('--p1=4.2 /p2=20.3 --p3 "443.2" some dummy string --p4=''2.2'' --p4=5');
+  cmdLineReader.parse('--p1=4.2 /p2=20.3 --p3 "443.2" some dummy string ' {--p4=''2.2''}  + ' --p4=5');
   if (abs(cmdLineReader.readFloat('p1')-4.2)>1e-4) or
      (abs(cmdLineReader.readFloat('p2')-2)>1e-4) or
      (abs(cmdLineReader.readFloat('p3')-443.2)>1e-4) or
