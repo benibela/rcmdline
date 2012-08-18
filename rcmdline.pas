@@ -25,7 +25,7 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-{$define unitcheck_rcmdline}
+//{$define unitcheck_rcmdline}
 
 uses sysutils; //for exceptions
 type
@@ -96,11 +96,11 @@ type
     procedure reset();
 
     //** Reads the standard command line parameters
-    procedure parse();virtual;overload;
+    procedure parse();overload;virtual;
     //** Reads the command line parameters from the string s
-    procedure parse(const s:string);virtual;overload;
+    procedure parse(const s:string);overload;virtual;
     //** Reads the command line parameters from the array args
-    procedure parse(const args:TStringArray);virtual;overload;
+    procedure parse(const args:TStringArray);overload;virtual;
 
     //** Adds a new option category. The category is just printed in the --help output
     procedure beginDeclarationCategory(category: string);
@@ -249,7 +249,7 @@ begin
       kpFile: cur := cur + '=<file> ';
       else cur:=cur+'=';
     end;
-    if propertyArray[i].abbreviation<>#0 then cur += ' or -'+propertyArray[i].abbreviation;
+    if propertyArray[i].abbreviation<>#0 then cur := cur + ' or -'+propertyArray[i].abbreviation;
     names[i] := cur;
     if length(cur) > maxLen then maxLen := length(cur);
     multiline:=multiline or (pos(LineEnding, propertyArray[i].desc) > 0);
