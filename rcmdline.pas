@@ -39,13 +39,13 @@ type
   TKindOfProperty=(kpStr,kpFile,kpInt,kpFloat,kpFlag);
   TProperty=record
    category: string;
-   name,desc,strvalue:string;
+   name,desc,strvalue,strvalueDefault:string;
    found: boolean;
    abbreviation: char;
    case kind: TKindOfProperty of
      kpStr,kpFile: ();
-     kpInt: (intvalue: longint);
-     kpFloat: (floatvalue: extended);
+     kpInt: (intvalue, intvalueDefault: longint);
+     kpFloat: (floatvalue, floatvalueDefault: extended);
      kpFlag: (flagvalue,flagdefault: boolean)
   end;
   PProperty=^TProperty;
@@ -91,6 +91,9 @@ type
 
     //** Returns the option summary printed by unknown errors
     function availableOptions:string;
+
+    //** Resets all options to their default values
+    procedure reset();
 
     //** Reads the standard command line parameters
     procedure parse();virtual;overload;
@@ -280,6 +283,26 @@ begin
   end;
 end;
 
+procedure TCommandLineReader.reset;
+var
+  i: Integer;
+begin
+  SetLength(nameless,0);
+  for i:=0 to high(propertyArray) do begin
+    with propertyArray[i] do begin
+      if found then begin
+        found:=false;
+        case kind of
+          kpStr,kpFile: strvalue := strvalueDefault;
+          kpInt: intvalue:=intvalueDefault;
+          kpFloat: floatvalue:=floatvalueDefault;
+          kpFlag: flagvalue:=flagdefault;
+        end;
+      end;
+    end;
+  end;
+end;
+
 procedure TCommandLineReader.parse();
 var args: TStringArray;
   i: Integer;
@@ -352,9 +375,7 @@ var currentProperty:longint;
     argpos: Integer;
     j: Integer;
 begin
-  SetLength(nameless,0);
-  for i:=0 to high(propertyArray) do
-    propertyArray[i].found:=false;
+  reset();
 
   argpos := 0;
   while argpos < length(args) do begin
@@ -551,21 +572,31 @@ end;
 
 procedure TCommandLineReader.declareFile(const name,description:string;default:string='');
 begin
-  declareProperty(name,description,'',kpFile);
+  declareProperty(name,description,'',kpFile)^.strvalueDefault:=default;
 end;
 
 procedure TCommandLineReader.declareString(const name,description:string;value: string='');
 begin
-  declareProperty(name,description,value,kpStr);
+  declareProperty(name,description,value,kpStr)^.strvalueDefault:=value;
 end;
 procedure TCommandLineReader.declareInt(const name,description:string;value: longint=0);
 begin
-  if value<>0 then declareProperty(name,description+' (default: '+IntToStr(value)+')',IntToStr(value),kpInt)^.intvalue:=value
-  else declareProperty(name,description,IntToStr(value),kpInt)^.intvalue:=value;
+  if value<>0 then
+    with declareProperty(name,description+' (default: '+IntToStr(value)+')',IntToStr(value),kpInt)^ do begin
+      intvalue:=value;
+      intvalueDefault:=intvalue;
+    end
+  else  with declareProperty(name,description,IntToStr(value),kpInt)^ do begin
+    intvalue:=value;
+    intvalueDefault:=intvalue;
+  end;
 end;
 procedure TCommandLineReader.declareFloat(const name,description:string;value: extended=0);
 begin
-  declareProperty(name,description,FloatToStr(value),kpFloat)^.floatvalue:=value;
+  with declareProperty(name,description,FloatToStr(value),kpFloat)^ do begin
+    floatvalue:=value;
+    floatvalueDefault:=value;
+  end;
 end;
 
 procedure TCommandLineReader.addAbbreviation(const abbreviation: char; const originalName: string = '');
@@ -791,7 +822,7 @@ begin
   cmdLineReader.allowDOSStyle:=true;
   cmdLineReader.declareFlag('f1','','f');
   cmdLineReader.declareFlag('f2','','g');
-  cmdLineReader.declareString('s0','','');
+  cmdLineReader.declareString('s0','','init');
   cmdLineReader.declareString('s1','',''); cmdLineReader.addAbbreviation('t');
   cmdLineReader.declareString('s2','',''); cmdLineReader.addAbbreviation('u');
   cmdLineReader.addAbbreviation('s', 's0');
@@ -802,10 +833,29 @@ begin
      (cmdLineReader.readString('s2')<>'foobar') or
      (not cmdLineReader.readFlag('f1')) or
      (not cmdLineReader.readFlag('f2'))
-  then
-    say('test 6 (abbreviation test) failed')
-   else
-    say('test 6 (abbreviation test) passed');
+  then say('test 6a (abbreviation test) failed')
+  else say('test 6a (abbreviation test) passed');
+
+
+  cmdLineReader.parse('/f');
+  if (cmdLineReader.readString('s0')<>'init') or
+     (cmdLineReader.readString('s1')<>'') or
+     (cmdLineReader.readString('s2')<>'') or
+     (not cmdLineReader.readFlag('f1')) or
+     (cmdLineReader.readFlag('f2'))
+  then say('test 6b (repeated test) failed')
+  else say('test 6b (repeated test) passed');
+
+    cmdLineReader.parse('/g /u=''xyz''');
+  if (cmdLineReader.readString('s0')<>'init') or
+     (cmdLineReader.readString('s1')<>'') or
+     (cmdLineReader.readString('s2')<>'xyz') or
+     (cmdLineReader.readFlag('f1')) or
+     (not cmdLineReader.readFlag('f2'))
+  then say('test 6c (repeated test) failed')
+  else say('test 6c (repeated test) passed');
+
+
   cmdLineReader.free;
 
   say('rcmdline unit test completed');
