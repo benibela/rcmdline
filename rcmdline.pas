@@ -25,7 +25,7 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-//{$define unitcheck_rcmdline}
+{$define unitcheck_rcmdline}
 
 uses sysutils; //for exceptions
 type
@@ -41,12 +41,12 @@ type
    category: string;
    name,desc,strvalue:string;
    found: boolean;
+   abbreviation: char;
    case kind: TKindOfProperty of
      kpStr,kpFile: ();
      kpInt: (intvalue: longint);
      kpFloat: (floatvalue: extended);
-     kpFlag: (flagvalue,flagdefault: boolean;
-              abbreviation: char)
+     kpFlag: (flagvalue,flagdefault: boolean)
   end;
   PProperty=^TProperty;
 
@@ -142,6 +142,11 @@ type
     procedure declareInt(const name,description:string;value: longint=0);overload;
     procedure declareFloat(const name,description:string;value: extended=0);overload;
 
+    //**Allows to use -abbreviation=... additionally to --originalName=... @br
+    //**With windows style /abbreviation and /originalName will behave in the same way
+    //**(only single letter abbreviations are allowed like in unix commands)
+    procedure addAbbreviation(const abbreviation: char; const originalName: string = '');
+
     //** Reads a previously declared string property
     function readString(const name:string):string; overload;
     //** Reads a previously declared int property
@@ -234,14 +239,14 @@ begin
   for i:=0 to high(propertyArray) do begin
     cur:='--'+propertyArray[i].name;
     case propertyArray[i].kind of
-      kpFlag: if propertyArray[i].abbreviation<>#0 then
-                cur:=cur+' or -'+propertyArray[i].abbreviation;
+      kpFlag: ;
       kpInt: cur := cur + '=<int> ';
       kpFloat: cur := cur + '=<float> ';
       kpStr: cur := cur + '=<string> ';
       kpFile: cur := cur + '=<file> ';
       else cur:=cur+'=';
     end;
+    if propertyArray[i].abbreviation<>#0 then cur += ' or -'+propertyArray[i].abbreviation;
     names[i] := cur;
     if length(cur) > maxLen then maxLen := length(cur);
     multiline:=multiline or (pos(LineEnding, propertyArray[i].desc) > 0);
@@ -358,9 +363,13 @@ begin
     if a = '' then continue;
     if (a[1] = '-') or (allowDOSStyle and (a[1]='/')) then begin
       //Start of property name
-      if (a[1]='/') or ((length(a) > 1) and (a[2]='-')) then begin //long property
-        if a[1]<>'/' then delete(a, 1, 2) else delete(a, 1, 1);
+      if (length(a) > 1) and ( (a[1]='/') or (a[2]='-')  //long property
+        or (length(a) = 2) or ((length(a) > 3) and (a[3] = '='))) //or "-a ..."  or "-a=..." abbreviation
+      then begin
+        if a[2]='-' then delete(a, 1, 2) else delete(a, 1, 1);
         if a = '' then continue;
+
+
 
         currentProperty:=-1;
         if (StrLIComp(@a[1],'enable-',7) = 0)or
@@ -384,16 +393,28 @@ begin
           index := pos('=', a);
           if index > 0 then name := copy(a, 1, index - 1);
 
-          for i:=0 to high(propertyArray) do
-            if equalCaseInseq(propertyArray[i].name, name) then begin
-              if (propertyArray[i].kind=kpFlag) and (index = 0) then
-                propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
-              currentProperty:=i;
-              propertyArray[i].found:=true;
-              break;
+          if length(name) = 1 then begin //option like -x [optional]
+            for i:=0 to high(propertyArray) do begin
+              if propertyArray[i].abbreviation = name[1] then begin
+                currentProperty := i;
+                break;
+              end;
             end;
+          end else
+            for i:=0 to high(propertyArray) do
+              if equalCaseInseq(propertyArray[i].name, name) then begin
+                currentProperty:=i;
+                break;
+              end;
+
           if currentProperty=-1 then raiseError('Unknown option: '+name);
-          if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then continue;
+
+          propertyArray[currentProperty].found:=true;
+          if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then begin
+            propertyArray[currentProperty].flagvalue:=not propertyArray[currentProperty].flagdefault;
+            continue;
+          end;
+
 
           if index = 0 then begin
             if (argpos = length(args)) then raiseError('No value for option '+name+' given');
@@ -415,8 +436,7 @@ begin
           end else parseSingleValue(propertyArray[currentProperty]);
         end;
       end else begin
-        //flag abbreviation string
-        for j:=2 to length(a) do begin //2 to skip beginning -
+        for j:=2 to length(a) do begin //2 to skip leading -
           currentProperty:=-1;
           for i:=0 to high(propertyArray) do
             if (propertyArray[i].kind=kpFlag) and (propertyArray[i].abbreviation=a[j]) then begin
@@ -546,6 +566,16 @@ end;
 procedure TCommandLineReader.declareFloat(const name,description:string;value: extended=0);
 begin
   declareProperty(name,description,FloatToStr(value),kpFloat)^.floatvalue:=value;
+end;
+
+procedure TCommandLineReader.addAbbreviation(const abbreviation: char; const originalName: string = '');
+begin
+  if originalName <> '' then
+    findProperty(originalName)^.abbreviation:=abbreviation
+   else begin
+     if length(propertyArray) = 0 then raise ECommandLineParseException.Create('No properties defined');
+     propertyArray[high(propertyArray)].abbreviation:=abbreviation;
+   end;
 end;
 
 function TCommandLineReader.readString(const name:string):string;
@@ -753,9 +783,30 @@ begin
    else
     say('test 5 (file test) passed');
   cmdLineReader.free;
-
   DeleteFile('test file 234234');
 
+
+  //abbreviation test
+  cmdLineReader:=TCommandLineReader.create;
+  cmdLineReader.allowDOSStyle:=true;
+  cmdLineReader.declareFlag('f1','','f');
+  cmdLineReader.declareFlag('f2','','g');
+  cmdLineReader.declareString('s0','','');
+  cmdLineReader.declareString('s1','',''); cmdLineReader.addAbbreviation('t');
+  cmdLineReader.declareString('s2','',''); cmdLineReader.addAbbreviation('u');
+  cmdLineReader.addAbbreviation('s', 's0');
+
+  cmdLineReader.parse('-f -g -s "abc" /t def -u=foobar ');
+  if (cmdLineReader.readString('s0')<>'abc') or
+     (cmdLineReader.readString('s1')<>'def') or
+     (cmdLineReader.readString('s2')<>'foobar') or
+     (not cmdLineReader.readFlag('f1')) or
+     (not cmdLineReader.readFlag('f2'))
+  then
+    say('test 6 (abbreviation test) failed')
+   else
+    say('test 6 (abbreviation test) passed');
+  cmdLineReader.free;
 
   say('rcmdline unit test completed');
 {$endif}
