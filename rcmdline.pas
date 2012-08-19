@@ -25,7 +25,7 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-//{$define unitcheck_rcmdline}
+{$define unitcheck_rcmdline}
 
 uses sysutils; //for exceptions
 type
@@ -77,6 +77,7 @@ type
     nameless: TStringArray;
     currentDeclarationCategory: String;
     FOnOptionRead: TOptionReadEvent;
+    FAllowOverrides: boolean;
     function findProperty(name:string):PProperty;
     function declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
 
@@ -176,6 +177,7 @@ type
     function readNamelessFlag():TBooleanArray;
 
     property onOptionRead: TOptionReadEvent read FOnOptionRead write FOnOptionRead;
+    property allowOverrides: boolean read FAllowOverrides write FAllowOverrides;
   end;
 
 implementation
@@ -213,6 +215,7 @@ begin
   searchNameLessFloat:=false;
   searchNameLessFlag:=false;}
   automaticalShowError:=not IsLibrary;
+  FAllowOverrides:=false;
 end;
 destructor TCommandLineReader.destroy;
 begin
@@ -406,7 +409,7 @@ begin
           for i:=0 to high(propertyArray) do
             if (propertyArray[i].kind=kpFlag) and equalCaseInseq(propertyArray[i].name, a) then begin
               propertyArray[i].flagvalue:=flagValue;
-              if propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
+              if not FAllowOverrides and propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
               propertyArray[i].found:=true;
               if assigned(onOptionRead) then
                 if propertyArray[i].flagvalue then onOptionRead(self,propertyArray[i].name, 'true')
@@ -438,7 +441,7 @@ begin
 
           if currentProperty=-1 then raiseError('Unknown option: '+name);
 
-          if propertyArray[currentProperty].found then raiseError('Duplicated option: '+name);
+          if not FAllowOverrides and propertyArray[currentProperty].found then raiseError('Duplicated option: '+name);
           propertyArray[currentProperty].found:=true;
           if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then begin
             propertyArray[currentProperty].flagvalue:=not propertyArray[currentProperty].flagdefault;
@@ -475,7 +478,7 @@ begin
           for i:=0 to high(propertyArray) do
             if (propertyArray[i].kind=kpFlag) and (propertyArray[i].abbreviation=a[j]) then begin
               propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
-              if propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
+              if not FAllowOverrides and propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
               propertyArray[i].found:=true;
               if assigned(onOptionRead) then
                 if propertyArray[i].flagvalue then onOptionRead(self,propertyArray[i].name, 'true')
@@ -781,7 +784,7 @@ begin
   cmdLineReader.declareFloat('p4','',4);
   cmdLineReader.declareFloat('p5','',5);
   cmdLineReader.declareFloat('p6','',6);
-  cmdLineReader.parse('--p1=4.2 /p2=20.3 --p3 "443.2" some dummy string ' {--p4=''2.2''}  + ' --p4=5');
+  cmdLineReader.parse('--p1=4.2 /p2=20.3 --p3 "443.2" some dummy string ' {+ '--p4=''2.2'''  }+ ' --p4=5');
   if (abs(cmdLineReader.readFloat('p1')-4.2)>1e-4) or
      (abs(cmdLineReader.readFloat('p2')-2)>1e-4) or
      (abs(cmdLineReader.readFloat('p3')-443.2)>1e-4) or
