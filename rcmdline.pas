@@ -49,6 +49,7 @@ type
      kpFlag: (flagvalue,flagdefault: boolean)
   end;
   PProperty=^TProperty;
+  TOptionReadEvent = procedure (sender: TObject; const name, value: string) of object;
 
   { TCommandLineReader }
 
@@ -75,6 +76,7 @@ type
     propertyArray: array of TProperty;
     nameless: TStringArray;
     currentDeclarationCategory: String;
+    FOnOptionRead: TOptionReadEvent;
     function findProperty(name:string):PProperty;
     function declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
 
@@ -172,6 +174,8 @@ type
     function readNamelessFloat():TFloatArray;
     //** Reads all booleans (true, false) that are given on the command line and do not belong to an declared option
     function readNamelessFlag():TBooleanArray;
+
+    property onOptionRead: TOptionReadEvent read FOnOptionRead write FOnOptionRead;
   end;
 
 implementation
@@ -404,6 +408,9 @@ begin
               propertyArray[i].flagvalue:=flagValue;
               if propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
               propertyArray[i].found:=true;
+              if assigned(onOptionRead) then
+                if propertyArray[i].flagvalue then onOptionRead(self,propertyArray[i].name, 'true')
+                else onOptionRead(self,propertyArray[i].name, 'false');
               currentProperty:=i;
               break;
             end;
@@ -435,6 +442,9 @@ begin
           propertyArray[currentProperty].found:=true;
           if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then begin
             propertyArray[currentProperty].flagvalue:=not propertyArray[currentProperty].flagdefault;
+            if assigned(onOptionRead) then
+              if propertyArray[i].flagvalue then onOptionRead(self,propertyArray[i].name, 'true')
+              else onOptionRead(self,propertyArray[i].name, 'false');
             continue;
           end;
 
@@ -457,6 +467,7 @@ begin
               value := value + ' ' + args[argpos + i];
             end;
           end else parseSingleValue(propertyArray[currentProperty]);
+          if assigned(onOptionRead) then onOptionRead(self,propertyArray[i].name, propertyArray[i].strvalue);
         end;
       end else begin
         for j:=2 to length(a) do begin //2 to skip leading -
@@ -466,6 +477,9 @@ begin
               propertyArray[i].flagvalue:=not propertyArray[i].flagdefault;
               if propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
               propertyArray[i].found:=true;
+              if assigned(onOptionRead) then
+                if propertyArray[i].flagvalue then onOptionRead(self,propertyArray[i].name, 'true')
+                else onOptionRead(self,propertyArray[i].name, 'false');
               currentProperty:=i;
             end;
           if currentProperty = -1 then raiseError('Unknown abbreviation: '+a[j]+ LineEnding +'(use -- or / for arguments)');
@@ -475,6 +489,7 @@ begin
       //value without variable name
       SetLength(nameless,length(nameless)+1);
       nameless[high(nameless)] := a;
+      if assigned(onOptionRead) then onOptionRead(self,'', a);
     end;
   end;
 
