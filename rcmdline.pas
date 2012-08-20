@@ -25,7 +25,7 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-{$define unitcheck_rcmdline}
+//{$define unitcheck_rcmdline}
 
 uses sysutils; //for exceptions
 type
@@ -384,6 +384,8 @@ var currentProperty:longint;
 begin
   reset();
 
+  parsed:=true; //mark as parsed, so readXXX can be used within the event called by onVariableRead
+
   argpos := 0;
   while argpos < length(args) do begin
     a := args[argpos];
@@ -504,7 +506,6 @@ begin
   end;
   for i:= 0 to high(nameless) do writeln('no: ', nameless[i]);}
 
-  parsed:=true;
 end;
 
 procedure TCommandLineReader.beginDeclarationCategory(category: string);
