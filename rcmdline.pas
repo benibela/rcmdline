@@ -472,7 +472,7 @@ begin
               value := value + ' ' + args[argpos + i];
             end;
           end else parseSingleValue(propertyArray[currentProperty]);
-          if assigned(onOptionRead) then onOptionRead(self,propertyArray[i].name, propertyArray[i].strvalue);
+          if assigned(onOptionRead) then onOptionRead(self,propertyArray[currentProperty].name, propertyArray[currentProperty].strvalue);
         end;
       end else begin
         for j:=2 to length(a) do begin //2 to skip leading -
