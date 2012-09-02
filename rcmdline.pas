@@ -391,7 +391,7 @@ begin
     a := args[argpos];
     inc(argpos);
     if a = '' then continue;
-    if (a[1] = '-') or (allowDOSStyle and (a[1]='/')) then begin
+    if (a <> '-') and (a <> '--') and ((a[1] = '-') or (allowDOSStyle and (a[1]='/'))) then begin
       //Start of property name
       if (length(a) > 1) and ( (a[1]='/') or (a[2]='-')  //long property
         or (length(a) = 2) or ((length(a) > 3) and (a[3] = '='))) //or "-a ..."  or "-a=..." abbreviation
