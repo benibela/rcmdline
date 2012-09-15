@@ -25,7 +25,7 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-//{$define unitcheck_rcmdline}
+{$define unitcheck_rcmdline}
 
 uses sysutils; //for exceptions
 type
@@ -83,6 +83,8 @@ type
 
     procedure raiseErrorWithHelp(message: string);
     procedure parseSingleValue(var prop: TProperty);
+
+    class function splitCommandLine(s: string; skipFirst: boolean): TStringArray;
   public
     language:TCommandLineReaderLanguage; //not implemented yet
     onShowError: TCommandLineReaderShowError;
@@ -101,7 +103,7 @@ type
     //** Reads the standard command line parameters
     procedure parse();overload;virtual;
     //** Reads the command line parameters from the string s
-    procedure parse(const s:string);overload;virtual;
+    procedure parse(const s:string; skipFirst: boolean = false);overload;virtual;
     //** Reads the command line parameters from the array args
     procedure parse(const args:TStringArray);overload;virtual;
 
@@ -182,7 +184,11 @@ type
 
 implementation
 {$ifdef unitcheck_rcmdline}
-uses classes;
+uses classes {$ifdef win32}, windows{$endif};
+{$else}
+{$ifdef win32}
+uses windows;
+{$endif}
 {$endif}
 
 
@@ -316,51 +322,20 @@ var args: TStringArray;
 begin
   if Paramcount = 0 then exit;
 
-  //parse(string(getcommandline));
-
+  {$ifdef win32}
+  parse(string(getcommandline), true);
+  {$else}
   setlength(args, Paramcount);
   for i:=0 to high(args) do args[i] := paramstr(i+1);
   parse(args);
+  {$endif}
 end;
 
-procedure TCommandLineReader.parse(const s:string);
-var args: TStringArray;
-  cmd: pchar;
-  marker: pchar;
-  stringstart: Char;
-
-  procedure pushMarked;
-  var
-    addLen: longint;
-  begin
-    if (marker = @s[1]) or (marker = cmd) or ((marker-1)^ = ' ') or (length(args) = 0) then
-      setlength(args, length(args)+1);
-    addLen := cmd - marker;
-    if addLen <= 0 then exit;
-    setlength(args[high(args)], length(args[high(args)]) + addLen);
-    move(marker^, args[high(args)][ length(args[high(args)]) - addLen + 1 ], addLen);
-    marker := cmd;
-  end;
+procedure TCommandLineReader.parse(const s:string; skipFirst: boolean = false);
+var
+  args: TStringArray;
 begin
-  if s = '' then exit;
-  cmd := @s[1];
-  marker := cmd;
-  while true do begin
-    if (cmd^ in [' ', #0]) then begin
-      if marker^ <> ' ' then pushMarked;
-      if cmd^ = #0 then break;
-    end else if cmd^ in ['"', ''''] then begin //todo escaped quotes (e.g. a"\"\""b)
-      if marker^ = ' ' then marker := cmd;
-      pushMarked;
-      stringstart := cmd^;
-      inc(cmd);
-      marker:=cmd;
-      while (cmd^ <> stringstart) and (cmd^ <> #0) do inc(cmd);
-      pushMarked;
-      marker := cmd + 1;
-    end else if marker^ = ' ' then marker:=cmd;
-    inc(cmd);
-  end;
+  args := splitCommandLine(s, skipFirst);
   parse(args);
 end;
 
@@ -578,6 +553,99 @@ begin
   end;
 end;
 
+class function TCommandLineReader.splitCommandLine(s: string; skipFirst: boolean): TStringArray;
+var args: TStringArray;
+  cmd: pchar;
+  marker: pchar;
+  stringstart: Char;
+  hasEscapes, newArgument: boolean;
+
+  const SPACE = [' ',#9];
+
+  procedure pushMarked;
+  var
+    addLen: longint;
+  begin
+    if marker = nil then exit;
+    if skipFirst then begin
+      skipFirst:=false;
+      marker := nil;
+      exit;
+    end;
+    if newArgument then begin
+      setlength(args, length(args)+1);
+      newArgument:=false;
+    end;
+    addLen := cmd - marker;
+    if addLen <= 0 then begin
+      marker := nil;
+      exit;
+    end;
+    setlength(args[high(args)], length(args[high(args)]) + addLen);
+    move(marker^, args[high(args)][ length(args[high(args)]) - addLen + 1 ], addLen);
+    if hasEscapes then begin
+      args[high(args)] := StringReplace(StringReplace(args[high(args)], '\'+stringstart, stringstart, [rfReplaceAll]),
+                                                                        '\\', '\', [rfReplaceAll]); //todo: are these all cases
+      hasEscapes := false;
+    end;
+    marker := nil;
+  end;
+var backslashCount: integer;
+begin
+  if s = '' then exit;
+  cmd := @s[1];
+  marker := nil;
+  newArgument := true;
+  hasEscapes := false;
+  while true do begin
+    case cmd^ of
+      ' ', #9, #0: begin
+        pushMarked;
+        while cmd^ in SPACE do cmd+=1;
+        if cmd^ = #0 then break;
+        newArgument := true;
+      end;
+      '"', '''': begin
+        pushMarked;
+        stringstart := cmd^;
+        inc(cmd);
+        marker:=cmd;
+        backslashCount:=0; hasEscapes := false;
+        while ((cmd^ <> stringstart) or (odd(backslashCount))) and (cmd^ <> #0) do begin
+          if cmd^ = '\' then begin
+            backslashCount+=1;
+          end else backslashCount:=0;
+          if cmd^ = stringstart then     //Special handling of escapes (see below)
+            hasEscapes:=true;
+          inc(cmd);
+        end;
+        pushMarked;
+        if cmd^ = #0 then break;
+        inc(cmd);
+      end;
+      '\': begin
+        //Special handling of escapes:
+        //    Only replace \\ by \, if there is also a \" or \'
+        //    So you can e.g. use \\127.0.0.1\DIR on windows
+        //                    as well as a\"b to escape a "
+        if marker = nil then marker := cmd;
+        inc(cmd);
+        if cmd^ in ['"', ''''] then begin
+          stringstart:=cmd^;
+          inc(cmd);
+          hasEscapes:=true;
+          pushMarked;
+        end else if not (cmd^ in (SPACE+[#0])) then inc(cmd);
+      end;
+      else begin
+        if marker = nil then marker := cmd;
+        inc(cmd);
+      end;
+    end;
+  end;
+  result := args;
+end;
+
 procedure TCommandLineReader.declareFlag(const name,description:string;flagNameAbbreviation:char;default:boolean=false);
 begin
   with declareProperty(name,description,'',kpFlag)^ do begin
@@ -724,8 +792,95 @@ var cmdLineReader: TCommandLineReader;
     if IsConsole then writeln(s)
     //else ShowMessage(s);
   end;
+
+var cmdlinetest: integer = 0;
+  procedure testSplitCommandLineRaw(line: string; skipFirst: boolean; expected: array of string);
+  var
+    args: TStringArray;
+    i: Integer;
+    ok: boolean;
+  begin
+    args := TCommandLineReader.splitCommandLine(line, skipFirst);
+    ok := true;
+    cmdlinetest := cmdlinetest + 1;
+    if length(args) <> length(expected) then begin
+      ok := false;
+    end;
+    if ok then
+    for i:=0 to high(args) do
+      if (args[i] <> expected[i]) then begin
+        ok := false;
+      end;
+    if not ok then begin
+      writeln(cmdlinetest, ' (',line,') failed ');
+      write('  Got:     '#9);
+      for i := 0 to high(args) do write('>', args[i], '<,'#9);
+      writeln();
+      write('  Expected:'#9);
+      for i := 0 to high(expected) do write('>',expected[i],'<,'#9);
+      writeln;
+    end;
+  end;
+
+  procedure testSplitCommandLine(line: string; expected: array of string);
+  var temp: array of string;
+    i: Integer;
+  begin
+    testSplitCommandLineRaw(line, false, expected);
+    testSplitCommandLineRaw('  '+line, false, expected);
+    testSplitCommandLineRaw('  '#9+line, false, expected); //can't test trailing withspace, since there are unclosed quotes
+
+    setlength(temp, length(expected)-1);
+    for i:=0 to high(temp) do temp[i] := expected[i+1];
+    testSplitCommandLineRaw(line, true, temp);
+    testSplitCommandLineRaw('  '#9+line, true, temp);
+  end;
+
 begin
   DecimalSeparator:='.';
+
+  testSplitCommandLine('abc',            ['abc']);
+  testSplitCommandLine('abc def',        ['abc', 'def']);
+  testSplitCommandLine('abc "def"',      ['abc', 'def']);
+  testSplitCommandLine('abc "d ef"',     ['abc', 'd ef']);
+  testSplitCommandLine('abc "''def''"',  ['abc', '''def''']);
+  testSplitCommandLine('abc ''"de f"''', ['abc', '"de f"']);
+  testSplitCommandLine('abc   ''"de f"''', ['abc', '"de f"']);
+  testSplitCommandLine('abc   foo" "bar',  ['abc', 'foo bar']);
+  testSplitCommandLine('abc   foo''  ''bar',  ['abc', 'foo  bar']);
+  testSplitCommandLine('abc'#9'foo" "bar',  ['abc', 'foo bar']);
+  testSplitCommandLine('abc   foo"'#9'"bar',  ['abc', 'foo'#9'bar']);
+  testSplitCommandLine('1 2  3 4',  ['1', '2', '3', '4']);
+  testSplitCommandLine('A  haus"maus"  Z',  ['A', 'hausmaus', 'Z']);
+  testSplitCommandLine('A  haus''maus''  Z',  ['A', 'hausmaus', 'Z']);
+  testSplitCommandLine('A  haus""maus  Z',  ['A', 'hausmaus', 'Z']);
+  testSplitCommandLine('A  haus''''maus  Z',  ['A', 'hausmaus', 'Z']);
+  testSplitCommandLine('"un closed',  ['un closed']);
+  testSplitCommandLine('''un closed',  ['un closed']);
+  testSplitCommandLine('un closed"',  ['un' , 'closed']);
+  testSplitCommandLine('un closed''',  ['un' , 'closed']);
+  testSplitCommandLine('a "" b', ['a', '', 'b']);
+  testSplitCommandLine('a '''' b', ['a', '', 'b']);
+  //backslashes (see special case documentation in split)
+  testSplitCommandLine('a "\" b', ['a', '" b']);
+  testSplitCommandLine('a "\\" b', ['a', '\\', 'b']);   //special case!
+  testSplitCommandLine('a "\\\" b', ['a', '\" b']);
+  testSplitCommandLine('a ''\'' b', ['a', ''' b']);
+  testSplitCommandLine('a ''\\'' b', ['a', '\\', 'b']); //special case!
+  testSplitCommandLine('a ''\\\'' b', ['a', '\'' b']);
+  testSplitCommandLine('a \ b', ['a', '\' , 'b']);
+  testSplitCommandLine('a \\ b', ['a', '\\', 'b']);
+  testSplitCommandLine('a \\\\ b', ['a', '\\\\', 'b']);
+  testSplitCommandLine('a \" b', ['a', '"', 'b']);
+  testSplitCommandLine('a \\" b', ['a', '\\ b']);
+  testSplitCommandLine('a \\\" b', ['a', '\"', 'b']);
+  testSplitCommandLine('a \\\\" b', ['a', '\\\\ b']);
+  testSplitCommandLine('a \\\\\" b', ['a', '\\"', 'b']);
+  testSplitCommandLine('a \', ['a', '\']);
+  testSplitCommandLine('a \\', ['a', '\\']);
+  testSplitCommandLine('a \"', ['a', '"']);
+  testSplitCommandLine('a \\"', ['a', '\\']);
+  testSplitCommandLine('a \\\"', ['a', '\"']);
 
   cmdLineReader:=TCommandLineReader.create;
   cmdLineReader.allowDOSStyle:=true;
@@ -877,8 +1032,40 @@ begin
   then say('test 6c (repeated test) failed')
   else say('test 6c (repeated test) passed');
 
-
   cmdLineReader.free;
+
+
+
+
+  cmdLineReader:=TCommandLineReader.create;
+  cmdLineReader.allowDOSStyle:=true;
+  cmdLineReader.declareString('s0','','init');
+  cmdLineReader.declareString('s1','','init');
+  cmdLineReader.declareString('s2','','init');
+  cmdLineReader.parse('--s0"=ab''c" --s"1=def" --s2="foo\"\''bar"');
+  if (cmdLineReader.readString('s0') <> 'ab''c') or
+     (cmdLineReader.readString('s1') <> 'def') or
+     (cmdLineReader.readString('s2') <> 'foo"\''bar')
+     then say('test 7a (double quotes) failed')
+     else say('test 7a (double quotes) passed');
+
+  cmdLineReader.parse('--s0''=abc"2'' --s''1=def2'' --s2=''foo\"\''bar''');
+  if (cmdLineReader.readString('s0') <> 'abc"2') or
+     (cmdLineReader.readString('s1') <> 'def2') or
+     (cmdLineReader.readString('s2') <> 'foo\"''bar')
+     then say('test 7b (single quotes) failed')
+     else say('test 7b (single quotes) passed');
+
+  cmdLineReader.parse('--s0=""abc3"" --s1=''''def3'''' --s2=te''"''st');
+  if (cmdLineReader.readString('s0') <> 'abc3') or
+     (cmdLineReader.readString('s1') <> 'def3') or
+     (cmdLineReader.readString('s2') <> 'te"st')
+     then say('test 7c failed')
+     else say('test 7c passed');
+
+  cmdLineReader.Free;
+
+
 
   say('rcmdline unit test completed');
 {$endif}
