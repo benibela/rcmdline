@@ -25,7 +25,7 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-{$define unitcheck_rcmdline}
+//{$define unitcheck_rcmdline}
 
 uses sysutils; //for exceptions
 type
