@@ -317,8 +317,10 @@ begin
 end;
 
 procedure TCommandLineReader.parse();
+{$ifndef win32}
 var args: TStringArray;
   i: Integer;
+{$endif}
 begin
   if Paramcount = 0 then exit;
 
@@ -601,7 +603,7 @@ begin
     case cmd^ of
       ' ', #9, #0: begin
         pushMarked;
-        while cmd^ in SPACE do cmd+=1;
+        while cmd^ in SPACE do inc(cmd);
         if cmd^ = #0 then break;
         newArgument := true;
       end;
@@ -612,9 +614,8 @@ begin
         marker:=cmd;
         backslashCount:=0; hasEscapes := false;
         while ((cmd^ <> stringstart) or (odd(backslashCount))) and (cmd^ <> #0) do begin
-          if cmd^ = '\' then begin
-            backslashCount+=1;
-          end else backslashCount:=0;
+          if cmd^ = '\' then inc(backslashCount)
+          else backslashCount:=0;
           if cmd^ = stringstart then     //Special handling of escapes (see below)
             hasEscapes:=true;
           inc(cmd);
@@ -815,7 +816,7 @@ var cmdlinetest: integer = 0;
       writeln(cmdlinetest, ' (',line,') failed ');
       write('  Got:     '#9);
       for i := 0 to high(args) do write('>', args[i], '<,'#9);
-      writeln();
+      writeln;
       write('  Expected:'#9);
       for i := 0 to high(expected) do write('>',expected[i],'<,'#9);
       writeln;
@@ -831,9 +832,11 @@ var cmdlinetest: integer = 0;
     testSplitCommandLineRaw('  '#9+line, false, expected); //can't test trailing withspace, since there are unclosed quotes
 
     setlength(temp, length(expected)-1);
-    for i:=0 to high(temp) do temp[i] := expected[i+1];
-    testSplitCommandLineRaw(line, true, temp);
-    testSplitCommandLineRaw('  '#9+line, true, temp);
+    if length(temp) > 0 then begin
+      for i:=0 to high(temp) do temp[i] := expected[i+1];
+      testSplitCommandLineRaw(line, true, temp);
+      testSplitCommandLineRaw('  '#9+line, true, temp);
+    end;
   end;
 
 begin
