@@ -183,13 +183,11 @@ type
   end;
 
 implementation
-{$ifdef unitcheck_rcmdline}
-uses classes {$ifdef win32}, windows{$endif};
-{$else}
-{$ifdef win32}
-uses windows;
-{$endif}
-{$endif}
+
+uses {$ifdef unitcheck_rcmdline}classes,{$endif}
+     {$ifdef windows}windows
+     {$else}baseunix,termio {$endif}
+     ;
 
 
 {$ifdef fpc}
@@ -206,10 +204,31 @@ end;
 const LineEnding = #13#10;
 {$endif}
 
+function getTerminalWidth: integer;
+{$ifdef windows}
+var csbi: TCONSOLESCREENBUFFERINFO;
+    handle: THANDLE;
+{$else}
+var winsize: TWinSize;
+{$endif}
+begin
+  result := 80;
+  {$ifdef windows}
+  handle := GetStdHandle(STD_OUTPUT_HANDLE);
+  if handle = INVALID_HANDLE_VALUE then exit;
+  if not GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), @csbi) then exit;
+  result := csbi.srWindow.Right - csbi.srWindow.Left + 1;
+  {$else}
+  if FpIOCtl(StdOutputHandle, TIOCGWINSZ, @winsize) = 0 then
+    result := winsize.ws_col;
+  {$endif}
+  if result < 10 then result := 80;
+end;
+
 constructor TCommandLineReader.create;
 begin
   parsed:=false;
-  {$IFDEF Win32}
+  {$IFDEF windows}
     allowDOSStyle:=true;
   {$ELSE}
     allowDOSStyle:=false;
@@ -230,6 +249,51 @@ end;
 
 function TCommandLineReader.availableOptions: string;
 
+  //from bbutils
+  function strWrap(const Line: string; MaxCol: Integer; lineBreak: string): string;
+  var res: string;
+    procedure add(x: string);
+    begin
+      if res = '' then res := x
+      else res := res + lineBreak + x;
+    end;
+
+  const BreakChars = [' ',#9];
+  var i: integer;
+      lastTextStart, lastBreakChance: integer;
+      tempBreak: Integer;
+  begin
+    result := '';
+    lastTextStart:=1;
+    lastBreakChance:=0;
+    result := '';
+    for i := 1 to length(line) do begin
+      if line[i] in [#13,#10] then begin
+        if lastTextStart > i  then continue;
+        add(copy(Line,lastTextStart,i-lastTextStart));
+        lastTextStart:=i+1;
+        if (i < length(line)) and (line[i] <> line[i+1]) and (line[i+1] in [#13, #10]) then inc(lastTextStart);
+      end;
+      if (i < length(line)) and (line[i+1] in BreakChars) then begin
+        lastBreakChance:=i+1;
+        if lastTextStart = lastBreakChance then inc(lastTextStart); //merge seveal break characters into a single new line
+      end;
+      if i - lastTextStart + 1 >= MaxCol then begin
+        if lastBreakChance >= lastTextStart then begin
+          tempBreak := lastBreakChance;
+          while (tempBreak > 1) and  (line[tempBreak-1] in BreakChars) do dec(tempBreak); //remove spaces before line wrap
+          add(copy(Line,lastTextStart,tempBreak-lastTextStart));
+          lastTextStart:=lastBreakChance+1;
+        end else begin
+          add(copy(Line, lastTextStart, MaxCol));
+          lastTextStart:=i+1;
+        end;
+      end;
+    end;
+    if lastTextStart <= length(line) then add(copy(line, lastTextStart, length(line)));
+    result := res;
+  end;
+
   function mydup(count: integer): string;
   var
     i: Integer;
@@ -247,11 +311,14 @@ var i:integer;
   multiline : boolean;
   maxLen: Integer;
   category: String;
+  terminalWidth: Integer;
+  pseudoLineBreak: String;
 begin
   setlength(names, length(propertyArray));
   maxLen := 0;
   multiline:=false;
   category := '';
+  terminalWidth := getTerminalWidth;
   for i:=0 to high(propertyArray) do begin
     cur:='--'+propertyArray[i].name;
     case propertyArray[i].kind of
@@ -270,6 +337,7 @@ begin
 
   dupped := '';
   for j:=1 to maxLen do dupped := dupped + ' ';
+             ;
 
   result:='';
   for i:=0 to high(propertyArray) do begin
@@ -279,18 +347,25 @@ begin
     end;
     cur:=names[i];
     if category <> '' then cur := '  ' + cur;
-    if not multiline or ( pos(LineEnding, propertyArray[i].desc) = 0 ) then cur := cur + mydup(maxLen - length(cur)) + #9 + propertyArray[i].desc + LineEnding
+
+
+    pseudoLineBreak := LineEnding+dupped;
+    if category <> '' then pseudoLineBreak := pseudoLineBreak + ' ';
+    pseudoLineBreak += #9;
+
+    if (not multiline or ( pos(LineEnding, propertyArray[i].desc) = 0 )) and (length(propertyArray[i].desc)+maxLen+10 < terminalWidth)  then
+       cur := cur + mydup(maxLen - length(cur)) + #9 + propertyArray[i].desc + LineEnding
     else begin
       cur := cur + mydup(maxLen - length(cur));
       temp := propertyArray[i].desc;
       p := pos(LineEnding, temp);
       while p > 0 do begin
-        cur := cur + #9 + copy(temp, 1, p - 1) + LineEnding + dupped;
+        cur := cur + #9 + strWrap(copy(temp, 1, p - 1), terminalWidth - 10 - maxLen, pseudoLineBreak) + LineEnding + dupped;
         if category <>' ' then cur := cur + '  ';
         delete(temp, 1, p + length(LineEnding) - 1);
         p := pos(LineEnding, temp);
       end;
-      cur := cur + #9 + temp + LineEnding;
+      cur := cur + #9 + strWrap(temp, terminalWidth - 10 - maxLen, pseudoLineBreak) + LineEnding;
     end;
     result:=result+cur;
   end;
@@ -317,14 +392,14 @@ begin
 end;
 
 procedure TCommandLineReader.parse();
-{$ifndef win32}
+{$ifndef windows}
 var args: TStringArray;
   i: Integer;
 {$endif}
 begin
   if Paramcount = 0 then exit;
 
-  {$ifdef win32}
+  {$ifdef windows}
   parse(string(getcommandline), true);
   {$else}
   setlength(args, Paramcount);
