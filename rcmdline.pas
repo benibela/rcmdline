@@ -184,6 +184,8 @@ type
 
 implementation
 
+{$ifdef win32}{$define windows}{$endif} //Delphi 4 does not know the windows-define
+
 uses {$ifdef unitcheck_rcmdline}classes,{$endif}
      {$ifdef windows}windows
      {$else}baseunix,termio {$endif}
@@ -216,7 +218,7 @@ begin
   {$ifdef windows}
   handle := GetStdHandle(STD_OUTPUT_HANDLE);
   if handle = INVALID_HANDLE_VALUE then exit;
-  if not GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), @csbi) then exit;
+  if not GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), csbi) then exit;
   result := csbi.srWindow.Right - csbi.srWindow.Left + 1;
   {$else}
   if FpIOCtl(StdOutputHandle, TIOCGWINSZ, @winsize) = 0 then
@@ -351,7 +353,7 @@ begin
 
     pseudoLineBreak := LineEnding+dupped;
     if category <> '' then pseudoLineBreak := pseudoLineBreak + ' ';
-    pseudoLineBreak += #9;
+    pseudoLineBreak := pseudoLineBreak + #9;
 
     if (not multiline or ( pos(LineEnding, propertyArray[i].desc) = 0 )) and (length(propertyArray[i].desc)+maxLen+10 < terminalWidth)  then
        cur := cur + mydup(maxLen - length(cur)) + #9 + propertyArray[i].desc + LineEnding
