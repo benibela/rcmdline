@@ -495,7 +495,9 @@ begin
                 break;
               end;
 
-          if currentProperty=-1 then raiseError('Unknown option: '+name);
+          if currentProperty=-1 then
+            if (name = 'help') or (name = '?') then raiseErrorWithHelp('')
+            else raiseError('Unknown option: '+name);
 
           if not FAllowOverrides and propertyArray[currentProperty].found then raiseError('Duplicated option: '+name);
           propertyArray[currentProperty].found:=true;
