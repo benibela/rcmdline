@@ -438,7 +438,7 @@ var currentProperty:longint;
 begin
   reset();
 
-  parsed:=true; //mark as parsed, so readXXX can be used within the event called by onVariableRead
+  parsed:=true; //mark as parsed, so readXXX can be used within the event called by onOptionRead
 
   argpos := 0;
   while argpos < length(args) do begin
