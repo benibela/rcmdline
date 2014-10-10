@@ -19,7 +19,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 )*)
 unit rcmdline;
 
-
 interface
 {$IFDEF FPC}
   {$mode objfpc}{$H+}
@@ -1152,4 +1151,4 @@ begin
   say('rcmdline unit test completed');
 {$endif}
 end.
-
+
