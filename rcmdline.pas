@@ -49,6 +49,7 @@ type
   end;
   PProperty=^TProperty;
   TOptionReadEvent = procedure (sender: TObject; const name, value: string) of object;
+  TOptionInterpretationEvent = procedure (sender: TObject; var name, value: string; const args: TStringArray; var argpos: integer) of object;
 
   { TCommandLineReader }
 
@@ -76,6 +77,7 @@ type
     nameless: TStringArray;
     currentDeclarationCategory: String;
     FOnOptionRead: TOptionReadEvent;
+    FOnOptionInterpretation: TOptionInterpretationEvent;
     FAllowOverrides: boolean;
     function findProperty(name:string):PProperty;
     function declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
@@ -177,7 +179,17 @@ type
     //** Reads all booleans (true, false) that are given on the command line and do not belong to an declared option
     function readNamelessFlag():TBooleanArray;
 
+    //** Event called when an option has been parsed. (e.g. to read all values if an option is given multiple times)
+    //** @code(name) contains the declared name of the property (not necessarily the same as the name the user used)
+    //** @code(value) the value read
     property onOptionRead: TOptionReadEvent read FOnOptionRead write FOnOptionRead;
+    //** Event  called when an option is being parsed. (e.g. to allow custom abbreviations of names)@br
+    //** @code(name) contains the read name of the property@br
+    //** @code(value) the value read; or the next value for boolean options (which will ignored)@br
+    //** @code(args) all arguments@br
+    //** @code(argpos) the current argument @br
+    property onCustomOptionInterpretation: TOptionInterpretationEvent read FOnOptionInterpretation write FOnOptionInterpretation;
+    //** If the same option may be given multiple times. Only the last value is remained.
     property allowOverrides: boolean read FAllowOverrides write FAllowOverrides;
   end;
 
@@ -425,6 +437,38 @@ var a: string;
     raiseErrorWithHelp('Error '+message+' (when reading argument: '+a+')');
   end;
 
+  function findPropertyIndex(const name: string): integer;
+  var
+    i: Integer;
+  begin
+    for i:=0 to high(propertyArray) do
+      if equalCaseInseq(propertyArray[i].name, name) then begin
+        result:=i;
+        exit;
+      end;
+    result:=-1;
+  end;
+
+var argpos: Integer;
+
+  procedure setPropertyFromStringValue(currentProperty: integer; value: string; checkFiles: boolean);
+  var
+    i: Integer;
+  begin
+    propertyArray[currentProperty].strvalue := value;
+    if checkFiles and (propertyArray[currentProperty].kind = kpFile) then begin
+      for i := 0 to length(args) - argpos do begin
+        if FileExists(value) then begin
+          inc(argpos, i);
+          propertyArray[currentProperty].strvalue := value;
+          break;
+        end;
+        if i = length(args) - argpos then break; //not found
+        value := value + ' ' + args[argpos + i];
+      end;
+    end else parseSingleValue(propertyArray[currentProperty]);
+    if assigned(onOptionRead) then onOptionRead(self,propertyArray[currentProperty].name, propertyArray[currentProperty].strvalue);
+  end;
 
 var currentProperty:longint;
     flagValue: boolean;
@@ -432,8 +476,8 @@ var currentProperty:longint;
     index: integer;
     name: String;                          
     value: String;
-    argpos: Integer;
     j: Integer;
+    argdelta: Integer;
 begin
   reset();
 
@@ -459,16 +503,24 @@ begin
            (StrLIComp(@a[1],'disable-',8) = 0)  then begin
           //long flag
           flagValue:=a[1]='e';
-          if flagValue then delete(a, 1, 7) else delete(a, 1, 8);
+          if flagValue then begin
+            delete(a, 1, 7);
+            value := 'true';
+          end else begin
+            delete(a, 1, 8);
+            value := 'false';
+          end;
+          if Assigned(FOnOptionInterpretation) then begin
+            FOnOptionInterpretation(self, a, value, args, argpos);
+            flagValue := value = 'true';
+          end;
 
           for i:=0 to high(propertyArray) do
             if (propertyArray[i].kind=kpFlag) and equalCaseInseq(propertyArray[i].name, a) then begin
               propertyArray[i].flagvalue:=flagValue;
               if not FAllowOverrides and propertyArray[i].found then raiseError('Duplicated option: '+propertyArray[i].name);
               propertyArray[i].found:=true;
-              if assigned(onOptionRead) then
-                if propertyArray[i].flagvalue then onOptionRead(self,propertyArray[i].name, 'true')
-                else onOptionRead(self,propertyArray[i].name, 'false');
+              if assigned(onOptionRead) then onOptionRead(self,propertyArray[i].name, value);
               currentProperty:=i;
               break;
             end;
@@ -478,7 +530,14 @@ begin
           //i.e --flag or --name=value or --name value
           name := a;
           index := pos('=', a);
-          if index > 0 then name := copy(a, 1, index - 1);
+          if index > 0 then begin
+            name := copy(a, 1, index - 1);
+            value := copy(a, index + 1, length(a) - index);
+          end else if (argpos < length(args)) then
+            value := args[argpos];
+
+
+          if Assigned(FOnOptionInterpretation) then FOnOptionInterpretation(self, name, value, args, argpos);
 
           if length(name) = 1 then begin //option like -x [optional]
             for i:=0 to high(propertyArray) do begin
@@ -487,12 +546,7 @@ begin
                 break;
               end;
             end;
-          end else
-            for i:=0 to high(propertyArray) do
-              if equalCaseInseq(propertyArray[i].name, name) then begin
-                currentProperty:=i;
-                break;
-              end;
+          end else currentProperty := findPropertyIndex(name);
 
           if currentProperty=-1 then
             if (name = 'help') or (name = '?') then raiseErrorWithHelp('')
@@ -503,31 +557,17 @@ begin
           if (propertyArray[currentProperty].kind=kpFlag) and (index = 0) then begin
             propertyArray[currentProperty].flagvalue:=not propertyArray[currentProperty].flagdefault;
             if assigned(onOptionRead) then
-              if propertyArray[i].flagvalue then onOptionRead(self,propertyArray[i].name, 'true')
-              else onOptionRead(self,propertyArray[i].name, 'false');
+              if propertyArray[currentProperty].flagvalue then onOptionRead(self,propertyArray[currentProperty].name, 'true')
+              else onOptionRead(self,propertyArray[currentProperty].name, 'false');
             continue;
           end;
 
-
           if index = 0 then begin
-            if (argpos = length(args)) then raiseError('No value for option '+name+' given');
-            value := args[argpos];
+            if argpos >= length(args) then raiseError('No value for option '+name+' given');
             inc(argpos);
-          end else value := copy(a, index + 1, length(a) - index);
+          end;
 
-          propertyArray[currentProperty].strvalue := value;
-          if propertyArray[currentProperty].kind = kpFile then begin
-            for i := 0 to length(args) - argpos do begin
-              if FileExists(value) then begin
-                inc(argpos, i);
-                propertyArray[currentProperty].strvalue := value;
-                break;
-              end;
-              if i = length(args) - argpos then break; //not found
-              value := value + ' ' + args[argpos + i];
-            end;
-          end else parseSingleValue(propertyArray[currentProperty]);
-          if assigned(onOptionRead) then onOptionRead(self,propertyArray[currentProperty].name, propertyArray[currentProperty].strvalue);
+          setPropertyFromStringValue(currentProperty, value, true);
         end;
       end else begin
         for j:=2 to length(a) do begin //2 to skip leading -
@@ -546,6 +586,16 @@ begin
         end;
       end;
     end else begin
+      if Assigned(FOnOptionInterpretation) then begin
+        name := '';
+        FOnOptionInterpretation(self, name, a, args, argpos);
+        if name <> '' then begin
+          currentProperty := findPropertyIndex(name);
+          if currentProperty = -1 then raiseError('Invalid property: '+name);
+          setPropertyFromStringValue(currentProperty, value, false);
+          continue;
+        end;
+      end;
       //value without variable name
       SetLength(nameless,length(nameless)+1);
       nameless[high(nameless)] := a;
@@ -1151,4 +1201,4 @@ begin
   say('rcmdline unit test completed');
 {$endif}
 end.
-
+
