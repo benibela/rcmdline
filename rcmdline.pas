@@ -24,7 +24,7 @@ interface
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-{$define unitcheck_rcmdline}
+//{$define unitcheck_rcmdline}
 
 uses sysutils; //for exceptions
 type
@@ -503,18 +503,29 @@ var currentProperty:longint;
     j: Integer;
     noFlagExpansion: Boolean;
     allowAbbreviation: Boolean;
+    weAreDoneInterpreting: Boolean;
 begin
   reset();
 
   parsed:=true; //mark as parsed, so readXXX can be used within the event called by onOptionRead
+  weAreDoneInterpreting := false;
 
   argpos := 0;
   while argpos < length(args) do begin
     a := args[argpos];
     inc(argpos);
     if a = '' then continue;
+    if a = '--' then begin
+      if Assigned(FOnOptionInterpretation) then begin
+        FOnOptionInterpretation(self, a, value, args, argpos);
+        if a <> '--' then continue;
+      end;
+      weAreDoneInterpreting:=true;
+      continue;
+    end;
     allowAbbreviation := true; //for special handling of DOS style args. /x is prefered to be --x but can fallback to abbreviated -x
-    if (a <> '-') and (a <> '--') and ((a[1] = '-') or (allowDOSStyle and (a[1]='/'))) then begin
+    if not weAreDoneInterpreting and (a <> '-') and (a <> '--')
+       and ((a[1] = '-') or (allowDOSStyle and (a[1]='/'))) then begin
       //Start of property name
       if (length(a) > 1) and ((a[1]='/') or (a[2]='-') ) then begin //long property
         if (a[2]='-') then begin
@@ -575,7 +586,7 @@ begin
 
       setPropertyFromStringValue(findPropertyIndex(name, true, false, false), value);
     end else begin
-      if Assigned(FOnOptionInterpretation) then begin
+      if not weAreDoneInterpreting and Assigned(FOnOptionInterpretation) then begin
         name := '';
         FOnOptionInterpretation(self, name, a, args, argpos);
         if name <> '' then begin
@@ -1214,6 +1225,19 @@ begin
 
   cmdLineReader.Free;
 
+  cmdLineReader:=TCommandLineReader.create;
+  cmdLineReader.declareString('s','a','init');
+  cmdLineReader.declareString('t', 'b', 'init');
+  cmdLineReader.declareString('u','c','init');
+  cmdLineReader.declareString('v', 'd', 'init');
+  cmdLineReader.parse('--s --t -- --u --v');
+  if (cmdLineReader.readString('s') <> '--t') or
+     (cmdLineReader.readString('t') <> 'init') or
+     (cmdLineReader.readString('u') <> 'init') or
+     (cmdLineReader.readString('v') <> 'init')
+     then say('test 9 (protection) failed')
+     else say('test 9 (protection) passed');
+  cmdLineReader.Free;
 
 
   say('rcmdline unit test completed');
