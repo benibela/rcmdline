@@ -581,10 +581,11 @@ begin
 
       if Assigned(FOnOptionInterpretation) then FOnOptionInterpretation(self, name, value, args, argpos);
 
+      j := findPropertyIndex(name, true, false, false);
       if (index = 0) and (value = '') and (argpos >= length(args)) then
         raiseError('No value for option '+name+' given');
 
-      setPropertyFromStringValue(findPropertyIndex(name, true, false, false), value);
+      setPropertyFromStringValue(j, value);
     end else begin
       if not weAreDoneInterpreting and Assigned(FOnOptionInterpretation) then begin
         name := '';
