@@ -102,11 +102,11 @@ type
     procedure reset();
 
     //** Reads the standard command line parameters
-    procedure parse();overload;virtual;
+    procedure parse(autoReset: boolean = true);overload;virtual;
     //** Reads the command line parameters from the string s
-    procedure parse(const s:string; skipFirst: boolean = false);overload;virtual;
+    procedure parse(const s:string; skipFirst: boolean = false; autoReset: boolean = true);overload;virtual;
     //** Reads the command line parameters from the array args
-    procedure parse(const args:TStringArray);overload;virtual;
+    procedure parse(const args:TStringArray; autoReset: boolean = true);overload;virtual;
 
     //** Adds a new option category. The category is just printed in the --help output
     procedure beginDeclarationCategory(category: string);
@@ -404,7 +404,8 @@ begin
   end;
 end;
 
-procedure TCommandLineReader.parse();
+
+procedure TCommandLineReader.parse(autoReset: boolean = true);
 {$ifndef windows}
 var args: TStringArray;
   i: Integer;
@@ -413,23 +414,23 @@ begin
   if Paramcount = 0 then exit;
 
   {$ifdef windows}
-  parse(string(getcommandline), true);
+  parse(string(getcommandline), true, autoReset);
   {$else}
   setlength(args, Paramcount);
   for i:=0 to high(args) do args[i] := paramstr(i+1);
-  parse(args);
+  parse(args, autoReset);
   {$endif}
 end;
 
-procedure TCommandLineReader.parse(const s:string; skipFirst: boolean = false);
+procedure TCommandLineReader.parse(const s:string; skipFirst: boolean = false; autoReset: boolean = true);
 var
   args: TStringArray;
 begin
   args := splitCommandLine(s, skipFirst);
-  parse(args);
+  parse(args, autoReset);
 end;
 
-procedure TCommandLineReader.parse(const args: TStringArray);
+procedure TCommandLineReader.parse(const args: TStringArray; autoReset: boolean = true);
 var a: string;
 
   procedure raiseError(message: string);
@@ -505,7 +506,7 @@ var currentProperty:longint;
     allowAbbreviation: Boolean;
     weAreDoneInterpreting: Boolean;
 begin
-  reset();
+  if autoReset then reset();
 
   parsed:=true; //mark as parsed, so readXXX can be used within the event called by onOptionRead
   weAreDoneInterpreting := false;
