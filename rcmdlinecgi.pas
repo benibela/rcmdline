@@ -41,7 +41,8 @@ public
   destructor destroy; override;
 
   //**Actually reads the CGI data (called automatically, when a read.. function is called)
-  procedure parse();override;
+  procedure parse(autoReset: boolean = true);override;
+
 
   //** Return
   function urlEncodeParams: string;
@@ -127,7 +128,7 @@ begin
   inherited destroy;
 end;
 
-procedure TCommandLineReaderCGI.parse;
+procedure TCommandLineReaderCGI.parse(autoReset: boolean = true);
   procedure parseVariables(list: TStrings);
   var
     name: String;
@@ -156,9 +157,7 @@ var
   i: Integer;
   temp: TStringArray;
 begin
-  reset();
-
-  inherited parse;
+  inherited parse(autoReset);
 
   parsed := true;
 
