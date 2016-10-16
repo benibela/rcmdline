@@ -486,7 +486,7 @@ var argpos: Integer;
         value := value + ' ' + args[argpos + i];
       end;
     end else parseSingleValue(propertyArray[currentProperty]);
-    if not FAllowOverrides and propertyArray[currentProperty].found then raiseError('Duplicated option: '+propertyArray[i].name);
+    if not FAllowOverrides and propertyArray[currentProperty].found then raiseError('Duplicated option: '+propertyArray[currentProperty].name);
     propertyArray[currentProperty].found:=true;
     if assigned(onOptionRead) then onOptionRead(self,propertyArray[currentProperty].name, propertyArray[currentProperty].strvalue);
   end;
