@@ -518,6 +518,7 @@ begin
     if a = '' then continue;
     if a = '--' then begin
       if Assigned(FOnOptionInterpretation) then begin
+        value := '';
         FOnOptionInterpretation(self, a, value, args, argpos);
         if a <> '--' then continue;
       end;
