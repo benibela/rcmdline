@@ -876,6 +876,7 @@ end;
 function TCommandLineReader.readNamelessInt():TLongintArray;
 var i,p:integer;
 begin
+  result := nil;
   SetLength(result,length(nameless));
   p:=0;
   for i:=0 to high(nameless) do
@@ -889,6 +890,7 @@ end;
 function TCommandLineReader.readNamelessFloat():TFloatArray;
 var i,p:integer;
 begin
+  result := nil;
   SetLength(result,length(nameless));
   p:=0;
   for i:=0 to high(nameless) do
@@ -902,6 +904,7 @@ end;
 function TCommandLineReader.readNamelessFlag():TBooleanArray;
 var i,p:integer;
 begin
+  result := nil;
   SetLength(result,length(nameless));
   p:=0;
   for i:=0 to high(nameless) do begin
