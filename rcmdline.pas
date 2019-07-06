@@ -196,6 +196,7 @@ type
 implementation
 
 {$ifdef win32}{$define windows}{$endif} //Delphi 4 does not know the windows-define
+{$ifdef MSWINDOWS}{$define windows}{$endif} // for 64-bit compilers
 
 uses {$ifdef unitcheck_rcmdline}classes,{$endif}
      {$ifdef windows}windows
@@ -713,7 +714,7 @@ var args: TStringArray;
       exit;
     end;
     setlength(args[high(args)], length(args[high(args)]) + addLen);
-    move(marker^, args[high(args)][ length(args[high(args)]) - addLen + 1 ], addLen);
+    move(marker^, args[high(args)][ length(args[high(args)]) - addLen + 1 ], SizeOf(Char) * addLen);
     if hasEscapes then begin
       args[high(args)] := StringReplace(StringReplace(args[high(args)], '\'+stringstart, stringstart, [rfReplaceAll]),
                                                                         '\\', '\', [rfReplaceAll]); //todo: are these all cases
@@ -972,7 +973,11 @@ var cmdlinetest: integer = 0;
   end;
 
 begin
+  {$IFDEF FPC}
   DecimalSeparator:='.';
+  {$ELSE}
+  Formatsettings.DecimalSeparator:='.';
+  {$ENDIF}
 
   testSplitCommandLine('abc',            ['abc']);
   testSplitCommandLine('abc def',        ['abc', 'def']);
