@@ -328,6 +328,7 @@ var i:integer;
   terminalWidth: Integer;
   pseudoLineBreak: String;
 begin
+  names := nil;
   setlength(names, length(propertyArray));
   maxLen := 0;
   multiline:=false;
@@ -417,6 +418,7 @@ begin
   {$ifdef windows}
   parse(string(getcommandline), true, autoReset);
   {$else}
+  args := nil;
   setlength(args, Paramcount);
   for i:=0 to high(args) do args[i] := paramstr(i+1);
   parse(args, autoReset);
@@ -964,6 +966,7 @@ var cmdlinetest: integer = 0;
     testSplitCommandLineRaw('  '+line, false, expected);
     testSplitCommandLineRaw('  '#9+line, false, expected); //can't test trailing withspace, since there are unclosed quotes
 
+    temp := nil;
     setlength(temp, length(expected)-1);
     if length(temp) > 0 then begin
       for i:=0 to high(temp) do temp[i] := expected[i+1];
@@ -973,11 +976,7 @@ var cmdlinetest: integer = 0;
   end;
 
 begin
-  {$IFDEF FPC}
-  DecimalSeparator:='.';
-  {$ELSE}
   Formatsettings.DecimalSeparator:='.';
-  {$ENDIF}
 
   testSplitCommandLine('abc',            ['abc']);
   testSplitCommandLine('abc def',        ['abc', 'def']);
