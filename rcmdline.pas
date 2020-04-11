@@ -39,6 +39,7 @@ type
   TProperty=record
    category: string;
    name,desc,strvalue,strvalueDefault:string;
+   strenumeration: TStringArray;
    found: boolean;
    abbreviation: char;
    case kind: TKindOfProperty of
@@ -84,6 +85,7 @@ type
 
     procedure raiseErrorWithHelp(message: string);
     procedure parseSingleValue(var prop: TProperty);
+
 
     class function splitCommandLine(s: string; skipFirst: boolean): TStringArray;
   public
@@ -156,6 +158,14 @@ type
     //**(only single letter abbreviations are allowed like in unix commands)
     procedure addAbbreviation(const abbreviation: char; const originalName: string = '');
 
+    //**Only allow certain values for argument @code(originalName)
+    procedure addEnumerationValues(const originalName: string; const enumeration: array of string);
+    //**Only allow certain values for the last argument
+    procedure addEnumerationValues(const enumeration: array of string);
+  protected
+    procedure addEnumerationValues(p: PProperty; const enumeration: array of string);
+
+  public
     //** Reads a previously declared string property
     function readString(const name:string):string; overload;
     //** Reads a previously declared int property
@@ -203,6 +213,16 @@ uses {$ifdef unitcheck_rcmdline}classes,{$endif}
      {$else}baseunix,termio {$endif}
      ;
 
+function strJoin(a: TStringArray): string;
+var
+  i: Integer;
+begin
+  result := '';
+  if length(a) = 0 then exit;
+  result := a[0];
+  for i := 1 to high(a) do
+    result := result + ', ' + a[i];
+end;
 
 {$ifdef fpc}
 function equalCaseInseq(const a, b: string): boolean;
@@ -317,7 +337,7 @@ function TCommandLineReader.availableOptions: string;
   end;
 
 var i:integer;
-  cur, temp, dupped: String;
+  cur, description, dupped: String;
   j: Integer;
   p: integer;
 
@@ -347,7 +367,7 @@ begin
     if propertyArray[i].abbreviation<>#0 then cur := cur + ' or -'+propertyArray[i].abbreviation;
     names[i] := cur;
     if length(cur) > maxLen then maxLen := length(cur);
-    multiline:=multiline or (pos(LineEnding, propertyArray[i].desc) > 0);
+    multiline:=multiline or (pos(LineEnding, propertyArray[i].desc) > 0) or (length(propertyArray[i].strenumeration) > 0);
   end;
 
   dupped := '';
@@ -368,25 +388,27 @@ begin
     if category <> '' then pseudoLineBreak := pseudoLineBreak + ' ';
     pseudoLineBreak := pseudoLineBreak + #9;
 
-    if (not multiline or ( pos(LineEnding, propertyArray[i].desc) = 0 )) and (length(propertyArray[i].desc)+maxLen+10 < terminalWidth)  then
-       cur := cur + mydup(maxLen - length(cur)) + #9 + propertyArray[i].desc + LineEnding
+    description := propertyArray[i].desc;
+    if length(propertyArray[i].strenumeration) > 0 then
+      description := description + LineEnding + 'Allowed values: ' + strJoin(propertyArray[i].strenumeration);
+    if (not multiline or ( pos(LineEnding, description) = 0 )) and (length(description)+maxLen+10 < terminalWidth)  then
+       cur := cur + mydup(maxLen - length(cur)) + #9 + description + LineEnding
     else begin
       cur := cur + mydup(maxLen - length(cur));
-      temp := propertyArray[i].desc;
-      p := pos(LineEnding, temp);
+      p := pos(LineEnding, description);
       while p > 0 do begin
-        cur := cur + #9 + strWrap(copy(temp, 1, p - 1), terminalWidth - 10 - maxLen, pseudoLineBreak) + LineEnding + dupped;
+        cur := cur + #9 + strWrap(copy(description, 1, p - 1), terminalWidth - 10 - maxLen, pseudoLineBreak) + LineEnding + dupped;
         if category <>' ' then cur := cur + '  ';
-        delete(temp, 1, p + length(LineEnding) - 1);
-        p := pos(LineEnding, temp);
+        delete(description, 1, p + length(LineEnding) - 1);
+        p := pos(LineEnding, description);
       end;
-      cur := cur + #9 + strWrap(temp, terminalWidth - 10 - maxLen, pseudoLineBreak) + LineEnding;
+      cur := cur + #9 + strWrap(description, terminalWidth - 10 - maxLen, pseudoLineBreak) + LineEnding;
     end;
     result:=result+cur;
   end;
 end;
 
-procedure TCommandLineReader.reset;
+procedure TCommandLineReader.reset();
 var
   i: Integer;
 begin
@@ -438,7 +460,7 @@ var a: string;
 
   procedure raiseError(message: string);
   begin
-    raiseErrorWithHelp('Error '+message+' (when reading argument: '+a+')');
+    raiseErrorWithHelp('Error: '+message+LineEnding+'(error occured when reading argument: '+a+')');
   end;
 
   procedure raiseNoProperty(name: string);
@@ -473,25 +495,37 @@ var a: string;
 
 var argpos: Integer;
 
-  procedure setPropertyFromStringValue(currentProperty: integer; value: string);
+  procedure setPropertyFromStringValue(currentPropertyIndex: integer; value: string);
   var
     i: Integer;
+    currentProperty: PProperty;
+    found: Boolean;
   begin
-    propertyArray[currentProperty].strvalue := value;
-    if (propertyArray[currentProperty].kind = kpFile) then begin
+    currentProperty := @propertyArray[currentPropertyIndex];
+    if length(currentProperty^.strenumeration) > 0 then begin
+      found := false;
+      for i := 0 to high(currentProperty^.strenumeration) do
+        if currentProperty^.strenumeration[i] = value then begin
+          found := true;
+          break;
+        end;
+      if not found then raiseError('Invalid value for: '+currentProperty^.name + LineEnding + 'Allowed values are: ' + strjoin(currentProperty^.strenumeration));
+    end;
+    currentProperty^.strvalue := value;
+    if (currentProperty^.kind = kpFile) then begin
       for i := 0 to length(args) - argpos do begin
         if FileExists(value) then begin
           inc(argpos, i);
-          propertyArray[currentProperty].strvalue := value;
+          currentProperty^.strvalue := value;
           break;
         end;
         if i = length(args) - argpos then break; //not found
         value := value + ' ' + args[argpos + i];
       end;
-    end else parseSingleValue(propertyArray[currentProperty]);
-    if not FAllowOverrides and propertyArray[currentProperty].found then raiseError('Duplicated option: '+propertyArray[currentProperty].name);
-    propertyArray[currentProperty].found:=true;
-    if assigned(onOptionRead) then onOptionRead(self,propertyArray[currentProperty].name, propertyArray[currentProperty].strvalue);
+    end else parseSingleValue(currentProperty^);
+    if not FAllowOverrides and currentProperty^.found then raiseError('Duplicated option: '+currentProperty^.name);
+    currentProperty^.found:=true;
+    if assigned(onOptionRead) then onOptionRead(self,currentProperty^.name, currentProperty^.strvalue);
   end;
 
   function invertedFlag(flagId: integer): string;
@@ -830,6 +864,25 @@ begin
      if length(propertyArray) = 0 then raise ECommandLineParseException.Create('No properties defined');
      propertyArray[high(propertyArray)].abbreviation:=abbreviation;
    end;
+end;
+
+procedure TCommandLineReader.addEnumerationValues(const originalName: string; const enumeration: array of string);
+begin
+  addEnumerationValues(findProperty(originalName), enumeration);
+end;
+
+procedure TCommandLineReader.addEnumerationValues(const enumeration: array of string);
+begin
+  if length(propertyArray) = 0 then raise ECommandLineParseException.Create('No properties defined');
+  addEnumerationValues(@propertyArray[high(propertyArray)], enumeration);
+end;
+
+procedure TCommandLineReader.addEnumerationValues(p: PProperty; const enumeration: array of string);
+var
+  i: Integer;
+begin
+  setlength(p^.strenumeration, length(enumeration));
+  for i := 0 to high(enumeration) do p^.strenumeration[i] := enumeration[i];
 end;
 
 function TCommandLineReader.readString(const name:string):string;
