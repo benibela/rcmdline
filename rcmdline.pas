@@ -829,7 +829,7 @@ end;
 
 procedure TCommandLineReader.declareFile(const name,description:string;default:string='');
 begin
-  declareProperty(name,description,'',kpFile)^.strvalueDefault:=default;
+  declareProperty(name,description,default,kpFile)^.strvalueDefault:=default;
 end;
 
 procedure TCommandLineReader.declareString(const name,description:string;value: string='');
