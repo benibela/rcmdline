@@ -159,11 +159,11 @@ type
     procedure addAbbreviation(const abbreviation: char; const originalName: string = '');
 
     //**Only allow certain values for argument @code(originalName)
-    procedure addEnumerationValues(const originalName: string; const enumeration: array of string);
+    procedure addEnumerationValues(const originalName: string; const enumeration: array of string);overload;
     //**Only allow certain values for the last argument
-    procedure addEnumerationValues(const enumeration: array of string);
+    procedure addEnumerationValues(const enumeration: array of string);overload;
   protected
-    procedure addEnumerationValues(p: PProperty; const enumeration: array of string);
+    procedure addEnumerationValues(p: PProperty; const enumeration: array of string);overload;
 
   public
     //** Reads a previously declared string property
