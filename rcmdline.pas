@@ -16,7 +16,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 }
 (*** @abstract(
   Command line reader
-)*)
+)
+
+See TCommandLineReader
+*)
 unit rcmdline;
 
 interface
@@ -33,12 +36,11 @@ type
   TFloatArray=array of extended;
   TBooleanArray=array of boolean;
   TCommandLineReaderLanguage=(clrlEnglish,clrlGerman);
-  TCommandLineReaderShowError=procedure (errorDescription: string) of object;
   ECommandLineParseException=class(Exception);
   TKindOfProperty=(kpStr,kpFile,kpInt,kpFloat,kpFlag);
   TProperty=record
    category: string;
-   name,desc,strvalue,strvalueDefault:string;
+   name,description,strvalue,strvalueDefault:string;
    strenumeration: TStringArray;
    found: boolean;
    abbreviation: char;
@@ -51,6 +53,7 @@ type
   PProperty=^TProperty;
   TOptionReadEvent = procedure (sender: TObject; const name, value: string) of object;
   TOptionInterpretationEvent = procedure (sender: TObject; var name, value: string; const args: TStringArray; var argpos: integer) of object;
+  TCommandLineReaderShowError=procedure (sender: TObject; errorDescription: string) of object;
 
   { TCommandLineReader }
 
@@ -61,19 +64,107 @@ type
                                                                                                            @br
     Usage: @orderedList(
       @item(  Declare all allowed arguments with the corresponding DeclareXXXX functions )
-      @item(  (optional) Call parse to explicitely read the actual command line )
+      @item(  Call parse to explicitely read the actual command line (optionally) )
       @item(  Use readXXX to read a declared argument )
     )
 
+
     On the command line arguments can be given in different ways, e.g.
-      @code(--name=value), @code(/name=value), @code(--name value), @code(/name value)                     @br
+    @preformatted(
+      --name=value
+      /name=value
+      --name value
+      /name value
+      --name="value"
+      /name="value"
+    )
+
+
     Declared flags can be changed with @code(--enable-flag) or @code(--disable-flag) or @code(--flag) where
     latter option negates the default value.@br
-    File are checked for spaces, so it is not always necessary to include them in quotes.
+    File names are checked for spaces, so it is not always necessary to surround them with quotes.
+
+    Internally, the allowed command line arguments are called both "properties" and "options".
+
+    Example:
+
+    @longCode(#
+var cmdline: TCommandLineReader;
+begin
+  cmdline := TCommandLineReader.create;
+
+  //Initial declaration of some command line parameters:
+  cmdline.declareString('name', 'An example string property');
+  cmdline.declareString('foo', 'Another example string property', 'bar');
+  cmdline.declareInt('count', 'An example integer property', 123);
+  cmdline.declareFlag('flag', 'An example boolean property');
+
+  //cmdline.parse();
+
+
+
+  //1. Parsing some command line options
+  cmdline.parse('--name="some name" --count 9');
+
+  cmdline.readString('name'); //some name
+  cmdline.readString('foo');  //bar
+  cmdline.readInt('count');   //9
+  cmdline.readFlag('flag');   //false
+
+  cmdline.existsProperty('name'); //true
+  cmdline.existsProperty('foo');  //false
+
+
+
+
+  //2. Parsing some other command line options
+  cmdline.parse('--foo barbar --flag');
+
+  cmdline.readString('name'); //
+  cmdline.readString('foo');  //barbar
+  cmdline.readInt('count');   //123
+  cmdline.readFlag('flag');   //true
+
+  cmdline.existsProperty('name'); //false
+  cmdline.existsProperty('foo');  //true
+
+
+
+
+  //3. Parsing some other command line options
+  cmdline.parse('--help');
+
+  //prints automatically generated help to stdout and halts:
+  {
+  The following command line options are valid:
+
+  --name=<string> 	An example string property
+  --foo=<string>  	Another example string property (default: bar)
+  --count=<int>   	An example integer property (default: 123)
+  --flag          	An example boolean property
+  }
+
+
+
+
+  //4. Some more advanced usage
+  cmdline.addAbbreviation('f'); //abbreviation for the last option (--flag)
+  cmdline.allowDOSStyle := true; //DOS slash options. Default is only true on Windows
+
+  cmdline.parse('/name "x y z" -f /count=1 /foo="abc"');
+  cmdline.readString('name'); //x y z
+  cmdline.readString('foo');  //abc
+  cmdline.readInt('count');   //1
+  cmdline.readFlag('flag');   //true
+
+  cmdline.existsProperty('name'); //true
+  cmdline.existsProperty('foo');  //true
+    #)
+
   *)
   TCommandLineReader=class
   protected
-    parsed{,searchNameLessFile,searchNameLessInt,searchNameLessFloat,searchNameLessFlag}: boolean;
+    parsed: boolean;
     propertyArray: array of TProperty;
     nameless: TStringArray;
     currentDeclarationCategory: String;
@@ -90,116 +181,131 @@ type
     class function splitCommandLine(s: string; skipFirst: boolean): TStringArray;
   public
     language:TCommandLineReaderLanguage; //not implemented yet
+    //** Event called when an invalid option is found during parsing of the command line.
     onShowError: TCommandLineReaderShowError;
-    automaticalShowError: boolean;
+    //** Automatically show an error message when the parsing finds an invalid option.
+    showErrorAutomatically: boolean;
+    //** Allow @code(/name value) option syntax.
     allowDOSStyle: boolean;
 
     constructor create;
     destructor destroy;override;
 
-    //** Returns the option summary printed by unknown errors
+    //** Returns a human-readable summary about the declared options. @br
+    //** It is automatically printed when an unknown option is given by the user.
     function availableOptions:string;
 
-    //** Resets all options to their default values
+    //** Resets all options to their default values.
     procedure reset();
 
-    //** Reads the standard command line parameters
+    //** Reads the standard command line parameters.
     procedure parse(autoReset: boolean = true);overload;virtual;
-    //** Reads the command line parameters from the string s
+    //** Reads the command line parameters from the string s.
     procedure parse(const s:string; skipFirst: boolean = false; autoReset: boolean = true);overload;virtual;
-    //** Reads the command line parameters from the array args
+    //** Reads the command line parameters from the array args.
     procedure parse(const args:TStringArray; autoReset: boolean = true);overload;virtual;
 
-    //** Adds a new option category. The category is just printed in the --help output
+    //** Adds a new option category. The category is printed in the --help and availableOptions output
     procedure beginDeclarationCategory(category: string);
 
-    //**DeclareFlag allows the use of flags                     @br
+    //**DeclareFlag declares a boolean property.                 @br
     //**Example:                                                @br
-    //**  @code(declareFlag('flag','f',true);)                  @br
-    //**  Following command-line options are always possible    @br
-    //**    --enable-flag      =>     flag:=true                @br
-    //**    --disable-flag     =>     flag:=false               @br
-    //**    --flag             =>     flag:=not default         @br
-    //**    -xfy               =>     flag:=not default
+    //**  @code(declareFlag('flag', 'description', 'f', true);) @br
+    //**Following command-line options are then allowed:
+    //**@preformatted(
+    //**    --enable-flag      =>     flag:=true
+    //**    --disable-flag     =>     flag:=false
+    //**    --flag             =>     flag:=not default
+    //**    -xfy               =>     flag:=not default  (when flags x and y have also been declared)
+    //**)
     procedure declareFlag(const name,description:string;flagNameAbbreviation:char;default:boolean=false);overload;
+    //**Overloaded @link(DeclareFlag) without a single letter abbreviation.
     procedure declareFlag(const name,description:string;default:boolean=false);overload;
 
 
-    //**DeclareFile allows the use of a file name                                     @br
+    //**DeclareFile declares a file name property.
+    //**
     //**Example:                                                                      @br
-    //**  @code(declareFile('file');)                                                 @br
-    //**  Following command-line options are  possible                                @br
-    //**    --file C:\test                  =>     file:=C:\test                      @br
-    //**    --file 'C:\test'                =>     file:=C:\test                      @br
-    //**    --file "C:\test"                =>     file:=C:\test                      @br
-    //**    --file='C:\test'                =>     file:=C:\test                      @br
-    //**    --file="C:\test"                =>     file:=C:\test                      @br
-    //**    --file C:\Eigene Dateien\a.bmp  =>     file:=C:\Eigene                    @br
-    //**                                           or file:=C:\Eigene Dateien\a.bmp,  @br
-    //**                                             if C:\Eigene does not exist
+    //**  @code(declareFile('file', 'description');)                                  @br
+    //**  Following command-line options are then allowed:                            @br
+    //**@preformatted(
+    //**    --file C:\test                  =>     file:=C:\test
+    //**    --file 'C:\test'                =>     file:=C:\test
+    //**    --file "C:\test"                =>     file:=C:\test
+    //**    --file='C:\test'                =>     file:=C:\test
+    //**    --file="C:\test"                =>     file:=C:\test
+    //**    --file C:\Program Files\a.exe   =>     file:=C:\Program
+    //**                                           or file:=C:\Program Files\a.exe if C:\Program does not exist
+    //**)
     procedure declareFile(const name,description:string;default:string='');overload;
 
-    //**DeclareXXXX allows the use of string, int, float, ...
+    //**DeclareInt declares an integer property.
+    //**
     //**Example:                                                    @br
-    //**   @code(declareInt('property');)                           @br
-    //**  Following command-line options are  possible              @br
-    //**    --file 123                  =>     file:=123            @br
-    //**    --file '123'                =>     file:=123            @br
-    //**    --file "123"                =>     file:=123            @br
-    //**    --file='123'                =>     file:=123            @br
-    //**    --file="123"                =>     file:=123            @br
-
-    procedure declareString(const name,description:string;value: string='');overload;
+    //**   @code(declareInt('prop', 'description');)                @br
+    //**  Following command-line options are then allowed:          @br
+    //**  @preformatted(
+    //**    --prop 123                  =>     prop:=123
+    //**    --prop '123'                =>     prop:=123
+    //**    --prop "123"                =>     prop:=123
+    //**    --prop='123'                =>     prop:=123
+    //**    --prop="123"                =>     prop:=123
+    //**   )
     procedure declareInt(const name,description:string;value: longint=0);overload;
+    //** DeclareString declares a string property. @br
+    //** See declareInt for a related example.
+    procedure declareString(const name,description:string;value: string='');overload;
+    //** DeclareFloat declares a float property. @br
+    //** See declareInt for a related example.
     procedure declareFloat(const name,description:string;value: extended=0);overload;
 
     //**Allows to use -abbreviation=... additionally to --originalName=... @br
     //**With windows style /abbreviation and /originalName will behave in the same way
-    //**(only single letter abbreviations are allowed like in unix commands)
+    //**(only single letter abbreviations are allowed like in unix commands).
     procedure addAbbreviation(const abbreviation: char; const originalName: string = '');
 
-    //**Only allow certain values for argument @code(originalName)
+    //**Only allow certain values for property @code(originalName).
     procedure addEnumerationValues(const originalName: string; const enumeration: array of string);overload;
-    //**Only allow certain values for the last argument
+    //**Only allow certain values for the last property.
     procedure addEnumerationValues(const enumeration: array of string);overload;
   protected
     procedure addEnumerationValues(p: PProperty; const enumeration: array of string);overload;
 
   public
-    //** Reads a previously declared string property
+    //** Reads a previously declared string property.
     function readString(const name:string):string; overload;
-    //** Reads a previously declared int property
+    //** Reads a previously declared int property.
     function readInt(const name:string):longint;overload;
-    //** Reads a previously declared float property
+    //** Reads a previously declared float property.
     function readFloat(const name:string):extended; overload;
-    //** Reads a previously declared boolean property
+    //** Reads a previously declared boolean property.
     function readFlag(const name:string):boolean;overload;
 
-    //** Tests if a declared property named name has been read
+    //** Tests if a declared property named name has been found on the command line.
     function existsProperty(const name:string):boolean;
 
-    //** Reads all file names that are given on the command line and do not belong to an declared option (doesn't check for non existing files, yet)
+    //** Reads all file names that are given on the command line and do not belong to a declared option (doesn't check for non existing files, yet).
     function readNamelessFiles():TStringArray;
-    //** Reads all strings that are given on the command line and do not belong to an declared option
+    //** Reads all strings that are given on the command line and do not belong to a declared option.
     function readNamelessString():TStringArray;
-    //** Reads all integers that are given on the command line and do not belong to an declared option
+    //** Reads all integers that are given on the command line and do not belong to a declared option.
     function readNamelessInt():TLongintArray;
-    //** Reads all floats that are given on the command line and do not belong to an declared option
+    //** Reads all floats that are given on the command line and do not belong to a declared option.
     function readNamelessFloat():TFloatArray;
-    //** Reads all booleans (true, false) that are given on the command line and do not belong to an declared option
+    //** Reads all booleans (true, false) that are given on the command line and do not belong to a declared option.
     function readNamelessFlag():TBooleanArray;
 
     //** Event called when an option has been parsed. (e.g. to read all values if an option is given multiple times)
-    //** @code(name) contains the declared name of the property (not necessarily the same as the name the user used)
-    //** @code(value) the value read
+    //** @code(name) contains the declared name of the property (not necessarily the same as the name the user used).
+    //** @code(value) the value read.
     property onOptionRead: TOptionReadEvent read FOnOptionRead write FOnOptionRead;
-    //** Event  called when an option is being parsed. (e.g. to allow custom abbreviations of names)@br
-    //** @code(name) contains the read name of the property@br
-    //** @code(value) the value read; or the next value for boolean options (which will ignored)@br
-    //** @code(args) all arguments@br
-    //** @code(argpos) the current argument @br
+    //** Event  called when an option is being parsed. (e.g. to allow custom abbreviations of names).@br
+    //** @code(name) contains the read name of the property.@br
+    //** @code(value) the value read; or the next value for boolean options (which will ignored).@br
+    //** @code(args) all arguments.@br
+    //** @code(argpos) the current argument. @br
     property onCustomOptionInterpretation: TOptionInterpretationEvent read FOnOptionInterpretation write FOnOptionInterpretation;
-    //** If the same option may be given multiple times. Only the last value is remained.
+    //** If the same option may be given multiple times. Only the last value is stored.
     property allowOverrides: boolean read FAllowOverrides write FAllowOverrides;
   end;
 
@@ -223,6 +329,16 @@ begin
   for i := 1 to high(a) do
     result := result + ', ' + a[i];
 end;
+
+function test(const s: string): integer;
+begin
+  result := ord(s = 'XXXX');
+end;
+procedure TestSub;
+begin
+  Writeln('TestSub');
+end;
+
 
 {$ifdef fpc}
 function equalCaseInseq(const a, b: string): boolean;
@@ -273,7 +389,7 @@ begin
   searchNameLessInt:=false;
   searchNameLessFloat:=false;
   searchNameLessFlag:=false;}
-  automaticalShowError:=not IsLibrary;
+  showErrorAutomatically:=not IsLibrary;
   FAllowOverrides:=false;
 end;
 destructor TCommandLineReader.destroy;
@@ -367,7 +483,7 @@ begin
     if propertyArray[i].abbreviation<>#0 then cur := cur + ' or -'+propertyArray[i].abbreviation;
     names[i] := cur;
     if length(cur) > maxLen then maxLen := length(cur);
-    multiline:=multiline or (pos(LineEnding, propertyArray[i].desc) > 0) or (length(propertyArray[i].strenumeration) > 0);
+    multiline:=multiline or (pos(LineEnding, propertyArray[i].description) > 0) or (length(propertyArray[i].strenumeration) > 0);
   end;
 
   dupped := '';
@@ -388,7 +504,9 @@ begin
     if category <> '' then pseudoLineBreak := pseudoLineBreak + ' ';
     pseudoLineBreak := pseudoLineBreak + #9;
 
-    description := propertyArray[i].desc;
+    description := propertyArray[i].description;
+    if (propertyArray[i].strvalueDefault <> '') and (propertyArray[i].strvalueDefault <> '0') then
+      description += ' (default: '+propertyArray[i].strvalueDefault+')';
     if length(propertyArray[i].strenumeration) > 0 then
       description := description + LineEnding + 'Allowed values: ' + strJoin(propertyArray[i].strenumeration);
     if (not multiline or ( pos(LineEnding, description) = 0 )) and (length(description)+maxLen+10 < terminalWidth)  then
@@ -674,15 +792,16 @@ begin
   result:=@propertyArray[high(propertyArray)];
   result^.category:=currentDeclarationCategory;
   result^.name:=lowercase(name);
-  result^.desc:=description;
+  result^.description:=description;
   result^.strvalue:=default;
+  result^.strvalueDefault:=default;
   result^.kind:=kind;
 end;
 
 procedure TCommandLineReader.raiseErrorWithHelp(message: string);
 var errorMessage: string;
 begin
-  if assigned(onShowError) or automaticalShowError then begin
+  if assigned(onShowError) or showErrorAutomatically then begin
     errorMessage:=message+LineEnding;
     if length(propertyArray)=0 then
       errorMessage:=errorMessage+LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
@@ -691,8 +810,8 @@ begin
   end;
 
   if assigned(onShowError) then
-    onShowError(errorMessage);
-  if automaticalShowError then begin
+    onShowError(self,errorMessage);
+  if showErrorAutomatically then begin
     if system.IsConsole then begin
       writeln(errorMessage);
       halt;
@@ -819,27 +938,27 @@ begin
     flagvalue:=default;
     flagdefault:=default;
     abbreviation:=flagNameAbbreviation;
+    if default then strvalueDefault:='true';
   end;
 end;
 procedure TCommandLineReader.declareFlag(const name,description:string;default:boolean=false);
 begin
-  if default<>false then declareFlag(name,description+' (default: true)',#0,default)
-  else declareFlag(name,description,#0,default);
+  declareFlag(name,description,#0,default);
 end;
 
 procedure TCommandLineReader.declareFile(const name,description:string;default:string='');
 begin
-  declareProperty(name,description,default,kpFile)^.strvalueDefault:=default;
+  declareProperty(name,description,default,kpFile)
 end;
 
 procedure TCommandLineReader.declareString(const name,description:string;value: string='');
 begin
-  declareProperty(name,description,value,kpStr)^.strvalueDefault:=value;
+  declareProperty(name,description,value,kpStr)
 end;
 procedure TCommandLineReader.declareInt(const name,description:string;value: longint=0);
 begin
   if value<>0 then
-    with declareProperty(name,description+' (default: '+IntToStr(value)+')',IntToStr(value),kpInt)^ do begin
+    with declareProperty(name,description,IntToStr(value),kpInt)^ do begin
       intvalue:=value;
       intvalueDefault:=intvalue;
     end
