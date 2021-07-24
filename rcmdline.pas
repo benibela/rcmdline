@@ -25,6 +25,7 @@ unit rcmdline;
 interface
 {$IFDEF FPC}
   {$mode objfpc}{$H+}
+  {$ModeSwitch autoderef}
 {$ENDIF}
 
 //{$define unitcheck_rcmdline}
@@ -165,7 +166,8 @@ begin
   TCommandLineReader=class
   protected
     parsed: boolean;
-    propertyArray: array of TProperty;
+    propertyArrayBuffer: array of TProperty;
+    propertyCount: SizeInt;
     nameless: TStringArray;
     currentDeclarationCategory: String;
     FOnOptionRead: TOptionReadEvent;
@@ -463,16 +465,17 @@ var i:integer;
   category: String;
   terminalWidth: Integer;
   pseudoLineBreak: String;
+  prop: PProperty;
 begin
   names := nil;
-  setlength(names, length(propertyArray));
+  setlength(names, propertyCount);
   maxLen := 0;
   multiline:=false;
   category := '';
   terminalWidth := getTerminalWidth;
-  for i:=0 to high(propertyArray) do begin
-    cur:='--'+propertyArray[i].name;
-    case propertyArray[i].kind of
+  for i:=0 to propertyCount - 1 do begin
+    cur:='--'+propertyArrayBuffer[i].name;
+    case propertyArrayBuffer[i].kind of
       kpFlag: ;
       kpInt: cur := cur + '=<int> ';
       kpFloat: cur := cur + '=<float> ';
@@ -480,10 +483,10 @@ begin
       kpFile: cur := cur + '=<file> ';
       else cur:=cur+'=';
     end;
-    if propertyArray[i].abbreviation<>#0 then cur := cur + ' or -'+propertyArray[i].abbreviation;
+    if propertyArrayBuffer[i].abbreviation<>#0 then cur := cur + ' or -'+propertyArrayBuffer[i].abbreviation;
     names[i] := cur;
     if length(cur) > maxLen then maxLen := length(cur);
-    multiline:=multiline or (pos(LineEnding, propertyArray[i].description) > 0) or (length(propertyArray[i].strenumeration) > 0);
+    multiline:=multiline or (pos(LineEnding, propertyArrayBuffer[i].description) > 0) or (length(propertyArrayBuffer[i].strenumeration) > 0);
   end;
 
   dupped := '';
@@ -491,9 +494,10 @@ begin
              ;
 
   result:='';
-  for i:=0 to high(propertyArray) do begin
-    if propertyArray[i].category <> category then begin
-      category := propertyArray[i].category;
+  for i:=0 to propertyCount - 1 do begin
+    prop := @propertyArrayBuffer[i];
+    if prop.category <> category then begin
+      category := prop.category;
       result := result + LineEnding + LineEnding + category + LineEnding+LineEnding;
     end;
     cur:=names[i];
@@ -504,11 +508,11 @@ begin
     if category <> '' then pseudoLineBreak := pseudoLineBreak + ' ';
     pseudoLineBreak := pseudoLineBreak + #9;
 
-    description := propertyArray[i].description;
-    if (propertyArray[i].strvalueDefault <> '') and (propertyArray[i].strvalueDefault <> '0') then
-      description += ' (default: '+propertyArray[i].strvalueDefault+')';
-    if length(propertyArray[i].strenumeration) > 0 then
-      description := description + LineEnding + 'Allowed values: ' + strJoin(propertyArray[i].strenumeration);
+    description := prop.description;
+    if (prop.strvalueDefault <> '') and (prop.strvalueDefault <> '0') then
+      description += ' (default: '+prop.strvalueDefault+')';
+    if length(prop.strenumeration) > 0 then
+      description := description + LineEnding + 'Allowed values: ' + strJoin(prop.strenumeration);
     if (not multiline or ( pos(LineEnding, description) = 0 )) and (length(description)+maxLen+10 < terminalWidth)  then
        cur := cur + mydup(maxLen - length(cur)) + #9 + description + LineEnding
     else begin
@@ -531,8 +535,8 @@ var
   i: Integer;
 begin
   SetLength(nameless,0);
-  for i:=0 to high(propertyArray) do begin
-    with propertyArray[i] do begin
+  for i:=0 to propertyCount - 1 do begin
+    with propertyArrayBuffer[i] do begin
       if found then begin
         found:=false;
         case kind of
@@ -593,15 +597,15 @@ var a: string;
     i: Integer;
   begin
     if allowLong then
-      for i:=0 to high(propertyArray) do
-        if equalCaseInseq(propertyArray[i].name, name) then begin
+      for i:=0 to propertyCount - 1 do
+        if equalCaseInseq(propertyArrayBuffer[i].name, name) then begin
           result:=i;
           exit;
         end;
 
     if allowAbbreviation then
-      for i:=0 to high(propertyArray) do
-        if propertyArray[i].abbreviation = name then begin
+      for i:=0 to propertyCount - 1 do
+        if propertyArrayBuffer[i].abbreviation = name then begin
           result:=i;
           exit;
         end;
@@ -619,7 +623,7 @@ var argpos: Integer;
     currentProperty: PProperty;
     found: Boolean;
   begin
-    currentProperty := @propertyArray[currentPropertyIndex];
+    currentProperty := @propertyArrayBuffer[currentPropertyIndex];
     if length(currentProperty^.strenumeration) > 0 then begin
       found := false;
       for i := 0 to high(currentProperty^.strenumeration) do
@@ -648,7 +652,7 @@ var argpos: Integer;
 
   function invertedFlag(flagId: integer): string;
   begin
-    if propertyArray[flagId].flagvalue then result := 'false' else result := 'true';
+    if propertyArrayBuffer[flagId].flagvalue then result := 'false' else result := 'true';
   end;
 
 var currentProperty:longint;
@@ -701,18 +705,18 @@ begin
             delete(a, 1, 8);
             value := 'false';
           end;
-          if (propertyArray[findPropertyIndex(a, true, false, false)].kind <> kpFlag) then raiseError('No flag: '+a);
+          if (propertyArrayBuffer[findPropertyIndex(a, true, false, false)].kind <> kpFlag) then raiseError('No flag: '+a);
           a := a + '=' + value; //this will be split again in the next step, but simplifies the code
         end;
       end else begin
         noFlagExpansion := false;
         for j:=2 to length(a) do begin //2 to skip leading -
           i:=findPropertyIndex(a[j], false, true, false);
-          if propertyArray[i].kind=kpFlag then begin
+          if propertyArrayBuffer[i].kind=kpFlag then begin
             setPropertyFromStringValue(i, invertedFlag(i));
           end else if (j = length(a)) or (a[j+1] = '=') then begin
             noFlagExpansion := true;
-            a := propertyArray[i].name + copy(a, j+1, length(a) - j);
+            a := propertyArrayBuffer[i].name + copy(a, j+1, length(a) - j);
             break
           end else raiseError('Invalid abbreviation: '+a[j]+ LineEnding +'(use -- or / for arguments)');
         end;
@@ -724,12 +728,12 @@ begin
         name := copy(a, 1, index - 1);
         value := copy(a, index + 1, length(a) - index);
         currentProperty := findPropertyIndex(name, true, allowAbbreviation, true);
-        if currentProperty >= 0 then name := propertyArray[currentProperty].name;
+        if currentProperty >= 0 then name := propertyArrayBuffer[currentProperty].name;
       end else begin
         name := a;
         currentProperty := findPropertyIndex(name, true, allowAbbreviation, true);
-        if currentProperty >= 0 then name := propertyArray[currentProperty].name;
-        if (currentProperty >= 0) and (propertyArray[currentProperty].kind = kpFlag) then value := invertedFlag(currentProperty)
+        if currentProperty >= 0 then name := propertyArrayBuffer[currentProperty].name;
+        if (currentProperty >= 0) and (propertyArrayBuffer[currentProperty].kind = kpFlag) then value := invertedFlag(currentProperty)
         else if (argpos < length(args)) then begin
           value := args[argpos];
           inc(argpos);
@@ -778,9 +782,9 @@ function TCommandLineReader.findProperty(name:string):PProperty;
 var i:integer;
 begin
   name:=lowercase(name);
-  for i:=0 to high(propertyArray) do
-    if propertyArray[i].name=name then begin
-      result:=@propertyArray[i];
+  for i:=0 to propertyCount - 1 do
+    if propertyArrayBuffer[i].name=name then begin
+      result:=@propertyArrayBuffer[i];
       exit;
     end;
   raise ECommandLineParseException.Create('Property not found: '+name);
@@ -788,8 +792,12 @@ end;
 
 function TCommandLineReader.declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
 begin
-  SetLength(propertyArray,length(propertyArray)+1);
-  result:=@propertyArray[high(propertyArray)];
+  propertyCount := propertyCount + 1;
+  if length(propertyArrayBuffer) < propertycount then
+    if length(propertyArrayBuffer) < 4 then SetLength(propertyArrayBuffer, 4)
+    else if length(propertyArrayBuffer) < 64 then SetLength(propertyArrayBuffer, length(propertyArrayBuffer) * 2)
+    else SetLength(propertyArrayBuffer, length(propertyArrayBuffer) + 64);
+  result:=@propertyArrayBuffer[propertyCount - 1];
   result^.category:=currentDeclarationCategory;
   result^.name:=lowercase(name);
   result^.description:=description;
@@ -803,7 +811,7 @@ var errorMessage: string;
 begin
   if assigned(onShowError) or showErrorAutomatically then begin
     errorMessage:=message+LineEnding;
-    if length(propertyArray)=0 then
+    if propertyCount=0 then
       errorMessage:=errorMessage+LineEnding+LineEnding+'You are not allowed to use command line options starting with -'
      else
       errorMessage:=errorMessage+ LineEnding+LineEnding+'The following command line options are valid: '+LineEnding+LineEnding+ availableOptions;
@@ -980,8 +988,8 @@ begin
   if originalName <> '' then
     findProperty(originalName)^.abbreviation:=abbreviation
    else begin
-     if length(propertyArray) = 0 then raise ECommandLineParseException.Create('No properties defined');
-     propertyArray[high(propertyArray)].abbreviation:=abbreviation;
+     if propertyCount = 0 then raise ECommandLineParseException.Create('No properties defined');
+     propertyArrayBuffer[propertyCount - 1].abbreviation:=abbreviation;
    end;
 end;
 
@@ -992,8 +1000,8 @@ end;
 
 procedure TCommandLineReader.addEnumerationValues(const enumeration: array of string);
 begin
-  if length(propertyArray) = 0 then raise ECommandLineParseException.Create('No properties defined');
-  addEnumerationValues(@propertyArray[high(propertyArray)], enumeration);
+  if propertyCount = 0 then raise ECommandLineParseException.Create('No properties defined');
+  addEnumerationValues(@propertyArrayBuffer[propertyCount - 1], enumeration);
 end;
 
 procedure TCommandLineReader.addEnumerationValues(p: PProperty; const enumeration: array of string);
