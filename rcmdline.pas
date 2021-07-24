@@ -30,7 +30,7 @@ interface
 
 //{$define unitcheck_rcmdline}
 
-uses sysutils; //for exceptions
+uses sysutils,classes;
 type
   TStringArray=array of string;
   TLongintArray=array of longint;
@@ -168,6 +168,7 @@ begin
     parsed: boolean;
     propertyArrayBuffer: array of TProperty;
     propertyCount: SizeInt;
+    FPropertySortedCache: TStringList;
     nameless: TStringArray;
     currentDeclarationCategory: String;
     FOnOptionRead: TOptionReadEvent;
@@ -175,6 +176,7 @@ begin
     FAllowOverrides: boolean;
     function findProperty(name:string):PProperty;
     function declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
+    function getPropertySortedCache: TStringList;
 
     procedure raiseErrorWithHelp(message: string);
     procedure parseSingleValue(var prop: TProperty);
@@ -396,6 +398,7 @@ begin
 end;
 destructor TCommandLineReader.destroy;
 begin
+  FPropertySortedCache.free;
   inherited;
 end;
 
@@ -596,12 +599,13 @@ var a: string;
   var
     i: Integer;
   begin
-    if allowLong then
-      for i:=0 to propertyCount - 1 do
-        if equalCaseInseq(propertyArrayBuffer[i].name, name) then begin
-          result:=i;
-          exit;
-        end;
+    if allowLong then begin
+      i := getPropertySortedCache.IndexOf(name);
+      if i >= 0 then begin
+        result := ptrint(FPropertySortedCache.Objects[i]);
+        exit;
+      end;
+    end;
 
     if allowAbbreviation then
       for i:=0 to propertyCount - 1 do
@@ -781,13 +785,10 @@ end;
 function TCommandLineReader.findProperty(name:string):PProperty;
 var i:integer;
 begin
-  name:=lowercase(name);
-  for i:=0 to propertyCount - 1 do
-    if propertyArrayBuffer[i].name=name then begin
-      result:=@propertyArrayBuffer[i];
-      exit;
-    end;
-  raise ECommandLineParseException.Create('Property not found: '+name);
+  i := getPropertySortedCache.IndexOf(name);
+  if i < 0 then
+    raise ECommandLineParseException.Create('Property not found: '+name);
+  result := @propertyArrayBuffer[ptrint(FPropertySortedCache.Objects[i])];
 end;
 
 function TCommandLineReader.declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
@@ -804,6 +805,25 @@ begin
   result^.strvalue:=default;
   result^.strvalueDefault:=default;
   result^.kind:=kind;
+end;
+
+function TCommandLineReader.getPropertySortedCache: TStringList;
+var
+  i: sizeint;
+begin
+  if FPropertySortedCache = nil then begin
+    FPropertySortedCache := TStringList.Create;
+    FPropertySortedCache.Options:=[];
+    FPropertySortedCache.CaseSensitive := true;
+    FPropertySortedCache.OwnsObjects:=false;
+  end;
+  result := FPropertySortedCache;
+  if FPropertySortedCache.Count = propertyCount then exit;
+  FPropertySortedCache.Clear;
+  FPropertySortedCache.Sorted := false;
+  for i := 0 to propertyCount - 1 do
+    FPropertySortedCache.AddObject(propertyArrayBuffer[i].name, tobject(i));
+  FPropertySortedCache.Sorted := true;
 end;
 
 procedure TCommandLineReader.raiseErrorWithHelp(message: string);
