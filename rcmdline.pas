@@ -814,7 +814,8 @@ begin
   if FPropertySortedCache = nil then begin
     FPropertySortedCache := TStringList.Create;
     FPropertySortedCache.Options:=[];
-    FPropertySortedCache.CaseSensitive := true;
+    FPropertySortedCache.CaseSensitive := false;
+    FPropertySortedCache.UseLocale := false;
     FPropertySortedCache.OwnsObjects:=false;
   end;
   result := FPropertySortedCache;
