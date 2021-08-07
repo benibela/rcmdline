@@ -813,9 +813,11 @@ var
 begin
   if FPropertySortedCache = nil then begin
     FPropertySortedCache := TStringList.Create;
+    {$if defined(DELPHI24_UP) or (FPC_FULLVERSION > 30100)}
     FPropertySortedCache.Options:=[];
     FPropertySortedCache.CaseSensitive := false;
     FPropertySortedCache.UseLocale := false;
+    {$endif}
     FPropertySortedCache.OwnsObjects:=false;
   end;
   result := FPropertySortedCache;
