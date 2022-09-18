@@ -31,6 +31,7 @@ interface
 //{$define unitcheck_rcmdline}
 
 uses sysutils,classes;
+const PACKAGE_VERSION = '1.0.0.repo';
 type
   TStringArray=array of string;
   TLongintArray=array of longint;
