@@ -167,7 +167,7 @@ begin
   protected
     parsed: boolean;
     propertyArrayBuffer: array of TProperty;
-    propertyCount: SizeInt;
+    propertyCount: NativeInt;
     FPropertySortedCache: TStringList;
     nameless: TStringArray;
     currentDeclarationCategory: String;
@@ -513,7 +513,7 @@ begin
 
     description := prop.description;
     if (prop.strvalueDefault <> '') and (prop.strvalueDefault <> '0') then
-      description += ' (default: '+prop.strvalueDefault+')';
+      description := description + ' (default: '+prop.strvalueDefault+')';
     if length(prop.strenumeration) > 0 then
       description := description + LineEnding + 'Allowed values: ' + strJoin(prop.strenumeration);
     if (not multiline or ( pos(LineEnding, description) = 0 )) and (length(description)+maxLen+10 < terminalWidth)  then
@@ -602,7 +602,7 @@ var a: string;
     if allowLong then begin
       i := getPropertySortedCache.IndexOf(name);
       if i >= 0 then begin
-        result := ptrint(FPropertySortedCache.Objects[i]);
+        result := NativeInt(FPropertySortedCache.Objects[i]);
         exit;
       end;
     end;
@@ -788,7 +788,7 @@ begin
   i := getPropertySortedCache.IndexOf(name);
   if i < 0 then
     raise ECommandLineParseException.Create('Property not found: '+name);
-  result := @propertyArrayBuffer[ptrint(FPropertySortedCache.Objects[i])];
+  result := @propertyArrayBuffer[NativeInt(FPropertySortedCache.Objects[i])];
 end;
 
 function TCommandLineReader.declareProperty(name,description,default:string;kind: TKindOfProperty):PProperty;
@@ -809,11 +809,13 @@ end;
 
 function TCommandLineReader.getPropertySortedCache: TStringList;
 var
-  i: sizeint;
+  i: NativeInt;
 begin
   if FPropertySortedCache = nil then begin
     FPropertySortedCache := TStringList.Create;
-    {$if defined(DELPHI24_UP) or (FPC_FULLVERSION > 30100)}
+    {$IF FPC_FULLVERSION > 30100}{$DEFINE HAS_STRINGLIST_LOCALE}{$ENDIF}
+    {$IFNDEF FPC}{$IF CompilerVersion > 22}{$DEFINE HAS_STRINGLIST_LOCALE}{$ENDIF}{$ENDIF}
+    {$ifdef HAS_STRINGLIST_LOCALE}
     FPropertySortedCache.Options:=[];
     FPropertySortedCache.CaseSensitive := false;
     FPropertySortedCache.UseLocale := false;
