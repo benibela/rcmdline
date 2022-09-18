@@ -484,7 +484,6 @@ begin
       kpFloat: cur := cur + '=<float> ';
       kpStr: cur := cur + '=<string> ';
       kpFile: cur := cur + '=<file> ';
-      else cur:=cur+'=';
     end;
     if propertyArrayBuffer[i].abbreviation<>#0 then cur := cur + ' or -'+propertyArrayBuffer[i].abbreviation;
     names[i] := cur;
@@ -867,6 +866,7 @@ begin
         if not prop.flagvalue and not equalCaseInseq(prop.strvalue, 'false') then
           raiseErrorWithHelp('Only "true" and "false" are valid flag values for option '+prop.name);
       end;
+      kpStr, kpFile: ;
     end;
   except
     raiseErrorWithHelp('Invalid value: '+prop.strvalue+' for option '+prop.name);
