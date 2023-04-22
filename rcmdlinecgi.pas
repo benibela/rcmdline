@@ -32,7 +32,7 @@ protected
   handlerOwned: TCgiHandlerForCommandLineReader;
   req: TCGIRequest;
   response: TCGIResponse;
-  procedure showErrorCGI(error: string);
+  procedure showErrorCGI(sender: TObject; error: string);
 public
   //**Creates a reader using the standard CGI interface
   constructor create();overload;
@@ -77,7 +77,7 @@ end;
 
 { TCommandLineReaderCGI }
 
-procedure TCommandLineReaderCGI.showErrorCGI(error: string);
+procedure TCommandLineReaderCGI.showErrorCGI(sender: TObject; error: string);
  procedure answer(s: string);
  begin
    if response = nil then writeln(s)
@@ -140,11 +140,11 @@ procedure TCommandLineReaderCGI.parse(autoReset: boolean = true);
       list.GetNameValue(j, name, value);
       if (name = '') then continue; //workaround for empty input created by codemirror
       found := false;
-      for i := 0 to high(propertyArray) do begin
-        if SameText(propertyArray[i].name, name) then begin
-          propertyArray[i].strvalue := value;
-          propertyArray[i].found := true;
-          parseSingleValue(propertyArray[i]);
+      for i := 0 to propertyCount - 1 do begin
+        if SameText(propertyArrayBuffer[i].name, name) then begin
+          propertyArrayBuffer[i].strvalue := value;
+          propertyArrayBuffer[i].found := true;
+          parseSingleValue(propertyArrayBuffer[i]);
           if assigned(onOptionRead) then onOptionRead(self, name, value);
           found := true;
           break;
@@ -170,9 +170,9 @@ begin
   parseVariables(req.ContentFields);
 
   if not AllowFiles then
-    for i:=0 to high(propertyArray) do
-      if (propertyArray[i].found) and (propertyArray[i].kind = kpFile) then
-        raiseErrorWithHelp('File parameters (like '+propertyArray[i].name+') have been forbidden due to security reasons');
+    for i:=0 to propertyCount - 1 do
+      if (propertyArrayBuffer[i].found) and (propertyArrayBuffer[i].kind = kpFile) then
+        raiseErrorWithHelp('File parameters (like '+propertyArrayBuffer[i].name+') have been forbidden due to security reasons');
 end;
 
 function TCommandLineReaderCGI.urlEncodeParams: string;
@@ -188,10 +188,10 @@ var
   i: Integer;
 begin
   result := '';
-  for i := 0 to high(propertyArray) do begin
-    if not propertyArray[i].found then continue;
-    if result <> '' then result += '&';
-    result += encode(propertyArray[i].name) + '=' + encode(propertyArray[i].strvalue);
+  for i := 0 to propertyCount - 1 do begin
+    if not propertyArrayBuffer[i].found then continue;
+    if result <> '' then result := result + '&';
+    result := result + encode(propertyArrayBuffer[i].name) + '=' + encode(propertyArrayBuffer[i].strvalue);
   end;
 end;
 
